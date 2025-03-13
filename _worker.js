@@ -1,25 +1,42 @@
 // @ts-nocheck
-// 在文件顶部添加版本信息后台密码（不可为空）
-const VERSION = "2.0";
+/**
+ * 域名管理系统 - DomainKeeper
+ * 版本: 2.1.0
+ * 作者: bacon159
+ * 最后更新: 2023
+ */
 
-// 自定义标题
-const CUSTOM_TITLE = "域名管理";
-
-// 在这里设置你的 Cloudflare API Token
-const CF_API_KEY = "A0yVNlSDEPe4vjt6FbfKPAAaTd11sO_ZIxdEuZqH";
-
-// 自建 WHOIS 代理服务地址
-const WHOIS_PROXY_URL = "https://whois.lbyan.us.kg";
-
-
-// 访问密码（可为空）
-const ACCESS_PASSWORD = "lbyan";
-
-// 后台密码（不可为空）
-const ADMIN_PASSWORD = "lbyan";
+// 配置常量
+const CONFIG = {
+  // 应用信息
+  VERSION: "2.1.0",
+  CUSTOM_TITLE: "域名管理",  
+  // API配置
+  CF_API_KEY: "A0yVNlSDEPe4vjt6FbfKPAAaTd11sO_ZIxdEuZqH",
+  WHOIS_PROXY_URL: "https://whois.lbyan.us.kg",
+  
+  // 安全配置
+  ACCESS_PASSWORD: "lbyan", // 可为空
+  ADMIN_PASSWORD: "lbyan", // 不可为空
+  
+  // 存储配置
+  KV_NAMESPACE: DOMAIN_INFO,
+  
+  // 缓存配置
+  CACHE_TTL: 86400 * 7, // 7天缓存过期时间(秒)
+  
+  // 状态配置
+  STATUS: {
+    UNKNOWN: { color: '#808080', title: '未知状态' },
+    URGENT: { color: '#ff0000', title: '紧急', days: 7 },
+    WARNING: { color: '#ffa500', title: '警告', days: 30 },
+    NOTICE: { color: '#ffff00', title: '注意', days: 90 },
+    NORMAL: { color: '#00ff00', title: '正常' }
+  }
+};
 
 // KV 命名空间绑定名称
-const KV_NAMESPACE = DOMAIN_INFO;
+const KV_NAMESPACE = CONFIG.KV_NAMESPACE;
 
 // footerHTML
 const footerHTML = `
@@ -34,7 +51,7 @@ const footerHTML = `
     padding: 10px 0;
     font-size: 14px;
   ">
-    Powered by DomainKeeper v${VERSION} <span style="margin: 0 10px;">|</span> © 2025 bacon159. All rights reserved.
+    Powered by DomainKeeper v${CONFIG.VERSION} <span style="margin: 0 10px;">|</span> © 2025 lbyan. All rights reserved.
   </footer>
 `;
 
@@ -42,31 +59,50 @@ addEventListener('fetch', event => {
   event.respondWith(handleRequest(event.request))
 });
 
+/**
+ * 处理所有请求的主函数
+ * @param {Request} request - 请求对象
+ * @returns {Promise<Response>} - 响应对象
+ */
 async function handleRequest(request) {
-  // 清理KV中的错误内容
-  await cleanupKV();
-  const url = new URL(request.url);
-  const path = url.pathname;
+  try {
+    // 清理KV中的错误内容
+    await cleanupKV();
+    const url = new URL(request.url);
+    const path = url.pathname;
 
-  if (path === "/api/manual-query") {
-    return handleManualQuery(request);
-  }
+    // 路由映射表
+    const routes = {
+      "/": handleFrontend,
+      "/admin": handleAdmin,
+      "/api/update": handleApiUpdate,
+      "/api/manual-query": handleManualQuery,
+      "/login": handleLogin,
+      "/admin-login": handleAdminLogin
+    };
 
-  if (path === "/") {
-    return handleFrontend(request);
-  } else if (path === "/admin") {
-    return handleAdmin(request);
-  } else if (path === "/api/update") {
-    return handleApiUpdate(request);
-  } else if (path === "/login") {
-    return handleLogin(request);
-  } else if (path === "/admin-login") {
-    return handleAdminLogin(request);
-  } else if (path.startsWith("/whois/")) {
-    const domain = path.split("/")[2];
-    return handleWhoisRequest(domain);
-  } else {
-    return new Response("Not Found", { status: 404 });
+    // 精确匹配路由
+    if (routes[path]) {
+      return await routes[path](request);
+    }
+    
+    // 处理前缀匹配路由
+    if (path.startsWith("/whois/")) {
+      const domain = path.split("/")[2];
+      return await handleWhoisRequest(domain);
+    }
+
+    // 未找到匹配路由
+    return new Response("Not Found", { 
+      status: 404,
+      headers: { 'Content-Type': 'text/plain' }
+    });
+  } catch (error) {
+    console.error("Request handling error:", error);
+    return new Response(`Server Error: ${error.message}`, { 
+      status: 500,
+      headers: { 'Content-Type': 'text/plain' }
+    });
   }
 }
 async function cleanupKV() {
@@ -103,146 +139,230 @@ async function handleManualQuery(request) {
   }
 }
 
+/**
+ * 处理前台页面请求
+ * @param {Request} request - 请求对象
+ * @returns {Promise<Response>} - 响应对象
+ */
 async function handleFrontend(request) {
-  const cookie = request.headers.get("Cookie");
-  if (ACCESS_PASSWORD && (!cookie || !cookie.includes(`access_token=${ACCESS_PASSWORD}`))) {
-    return Response.redirect(`${new URL(request.url).origin}/login`, 302);
-  }
-
-  console.log("Fetching Cloudflare domains info...");
-  const domains = await fetchCloudflareDomainsInfo();
-  console.log("Cloudflare domains:", domains);
-
-  console.log("Fetching domain info...");
-  const domainsWithInfo = await fetchDomainInfo(domains);
-  console.log("Domains with info:", domainsWithInfo);
-
-  return new Response(generateHTML(domainsWithInfo, false), {
-    headers: { 'Content-Type': 'text/html' },
-  });
-}
-
-
-async function handleAdmin(request) {
-  const cookie = request.headers.get("Cookie");
-  if (!cookie || !cookie.includes(`admin_token=${ADMIN_PASSWORD}`)) {
-    return Response.redirect(`${new URL(request.url).origin}/admin-login`, 302);
-  }
-
-  const domains = await fetchCloudflareDomainsInfo();
-  const domainsWithInfo = await fetchDomainInfo(domains);
-  return new Response(generateHTML(domainsWithInfo, true), {
-    headers: { 'Content-Type': 'text/html' },
-  });
-}
-
-async function handleLogin(request) {
-  if (request.method === "POST") {
-    const formData = await request.formData();
-    const password = formData.get("password");
-
-    console.log("Entered password:", password);
-    console.log("Expected password:", ACCESS_PASSWORD);
-
-    if (password === ACCESS_PASSWORD) {
-      return new Response("Login successful", {
-        status: 302,
-        headers: {
-          "Location": "/",
-          "Set-Cookie": `access_token=${ACCESS_PASSWORD}; HttpOnly; Path=/; SameSite=Strict`
-        }
-      });
-    } else {
-      return new Response(generateLoginHTML("前台登录", "/login", "密码错误，请重试。"), {
-        headers: { "Content-Type": "text/html" },
-        status: 401
-      });
-    }
-  }
-  return new Response(generateLoginHTML("前台登录", "/login"), {
-    headers: { "Content-Type": "text/html" }
-  });
-}
-
-
-async function handleAdminLogin(request) {
-  console.log("Handling admin login request");
-  console.log("Request method:", request.method);
-
-  if (request.method === "POST") {
-    console.log("Processing POST request for admin login");
-    const formData = await request.formData();
-    console.log("Form data:", formData);
-    const password = formData.get("password");
-    console.log("Entered admin password:", password);
-    console.log("Expected admin password:", ADMIN_PASSWORD);
-
-    if (password === ADMIN_PASSWORD) {
-      return new Response("Admin login successful", {
-        status: 302,
-        headers: {
-          "Location": "/admin",
-          "Set-Cookie": `admin_token=${ADMIN_PASSWORD}; HttpOnly; Path=/; SameSite=Strict`
-        }
-      });
-    } else {
-      return new Response(generateLoginHTML("后台登录", "/admin-login", "密码错误，请重试。"), {
-        headers: { "Content-Type": "text/html" },
-        status: 401
-      });
-    }
-  }
-
-  return new Response(generateLoginHTML("后台登录", "/admin-login"), {
-    headers: { "Content-Type": "text/html" }
-  });
-}
-
-
-
-async function handleApiUpdate(request) {
-  if (request.method !== "POST") {
-    return new Response("Method Not Allowed", { status: 405 });
-  }
-
-  const auth = request.headers.get("Authorization");
-  if (!auth || auth !== `Basic ${btoa(`:${ADMIN_PASSWORD}`)}`) {
-    return new Response("Unauthorized", { status: 401 });
-  }
-
   try {
+    const cookie = request.headers.get("Cookie");
+    if (CONFIG.ACCESS_PASSWORD && (!cookie || !cookie.includes(`access_token=${CONFIG.ACCESS_PASSWORD}`))) {
+      return Response.redirect(`${new URL(request.url).origin}/login`, 302);
+    }
+
+    console.log("Fetching Cloudflare domains info...");
+    const domains = await fetchCloudflareDomainsInfo();
+    
+    console.log("Fetching domain info...");
+    const domainsWithInfo = await fetchDomainInfo(domains);
+    
+    return new Response(generateHTML(domainsWithInfo, false), {
+      headers: { 'Content-Type': 'text/html' },
+    });
+  } catch (error) {
+    console.error("Frontend handling error:", error);
+    return new Response(`Error loading frontend: ${error.message}`, { 
+      status: 500,
+      headers: { 'Content-Type': 'text/plain' }
+    });
+  }
+}
+
+
+/**
+ * 处理后台管理页面请求
+ * @param {Request} request - 请求对象
+ * @returns {Promise<Response>} - 响应对象
+ */
+async function handleAdmin(request) {
+  try {
+    const cookie = request.headers.get("Cookie");
+    if (!cookie || !cookie.includes(`admin_token=${CONFIG.ADMIN_PASSWORD}`)) {
+      return Response.redirect(`${new URL(request.url).origin}/admin-login`, 302);
+    }
+
+    const domains = await fetchCloudflareDomainsInfo();
+    const domainsWithInfo = await fetchDomainInfo(domains);
+    return new Response(generateHTML(domainsWithInfo, true), {
+      headers: { 'Content-Type': 'text/html' },
+    });
+  } catch (error) {
+    console.error("Admin handling error:", error);
+    return new Response(`Error loading admin page: ${error.message}`, { 
+      status: 500,
+      headers: { 'Content-Type': 'text/plain' }
+    });
+  }
+}
+
+/**
+ * 处理前台登录请求
+ * @param {Request} request - 请求对象
+ * @returns {Promise<Response>} - 响应对象
+ */
+async function handleLogin(request) {
+  try {
+    if (request.method === "POST") {
+      const formData = await request.formData();
+      const password = formData.get("password");
+
+      if (password === CONFIG.ACCESS_PASSWORD) {
+        return new Response("Login successful", {
+          status: 302,
+          headers: {
+            "Location": "/",
+            "Set-Cookie": `access_token=${CONFIG.ACCESS_PASSWORD}; HttpOnly; Path=/; SameSite=Strict; Max-Age=86400`
+          }
+        });
+      } else {
+        return new Response(generateLoginHTML("前台登录", "/login", "密码错误，请重试。"), {
+          headers: { "Content-Type": "text/html" },
+          status: 401
+        });
+      }
+    }
+    
+    return new Response(generateLoginHTML("前台登录", "/login"), {
+      headers: { "Content-Type": "text/html" }
+    });
+  } catch (error) {
+    console.error("Login handling error:", error);
+    return new Response(`Login error: ${error.message}`, { 
+      status: 500,
+      headers: { 'Content-Type': 'text/plain' }
+    });
+  }
+}
+
+
+/**
+ * 处理后台登录请求
+ * @param {Request} request - 请求对象
+ * @returns {Promise<Response>} - 响应对象
+ */
+async function handleAdminLogin(request) {
+  try {
+    if (request.method === "POST") {
+      const formData = await request.formData();
+      const password = formData.get("password");
+
+      if (password === CONFIG.ADMIN_PASSWORD) {
+        return new Response("Admin login successful", {
+          status: 302,
+          headers: {
+            "Location": "/admin",
+            "Set-Cookie": `admin_token=${CONFIG.ADMIN_PASSWORD}; HttpOnly; Path=/; SameSite=Strict; Max-Age=86400`
+          }
+        });
+      } else {
+        return new Response(generateLoginHTML("后台登录", "/admin-login", "密码错误，请重试。"), {
+          headers: { "Content-Type": "text/html" },
+          status: 401
+        });
+      }
+    }
+
+    return new Response(generateLoginHTML("后台登录", "/admin-login"), {
+      headers: { "Content-Type": "text/html" }
+    });
+  } catch (error) {
+    console.error("Admin login handling error:", error);
+    return new Response(`Admin login error: ${error.message}`, { 
+      status: 500,
+      headers: { 'Content-Type': 'text/plain' }
+    });
+  }
+}
+
+
+
+/**
+ * 处理API更新请求
+ * @param {Request} request - 请求对象
+ * @returns {Promise<Response>} - 响应对象
+ */
+async function handleApiUpdate(request) {
+  try {
+    // 验证请求方法
+    if (request.method !== "POST") {
+      return new Response(JSON.stringify({ success: false, error: "Method Not Allowed" }), { 
+        status: 405,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    // 验证身份认证
+    const auth = request.headers.get("Authorization");
+    if (!auth || auth !== `Basic ${btoa(`:${CONFIG.ADMIN_PASSWORD}`)}`) {
+      return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), { 
+        status: 401,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    // 解析请求数据
     const data = await request.json();
     const { action, domain, system, registrar, registrationDate, expirationDate } = data;
-
-    if (action === 'delete') {
-      // 删除自定义域名
-      await KV_NAMESPACE.delete(`whois_${domain}`);
-    } else if (action === 'update-whois') {
-      // 更新 WHOIS 信息
-      const whoisInfo = await fetchWhoisInfo(domain);
-      await cacheWhoisInfo(domain, whoisInfo);
-    } else if (action === 'add') {
-      // 添加新域名
-      const newDomainInfo = {
-        domain,
-        system,
-        registrar,
-        registrationDate,
-        expirationDate,
-        isCustom: true
-      };
-      await cacheWhoisInfo(domain, newDomainInfo);
-    } else {
-      // 更新域名信息
-      let domainInfo = await getCachedWhoisInfo(domain) || {};
-      domainInfo = {
-        ...domainInfo,
-        registrar,
-        registrationDate,
-        expirationDate
-      };
-      await cacheWhoisInfo(domain, domainInfo);
+    
+    // 验证必要参数
+    if (!domain) {
+      return new Response(JSON.stringify({ success: false, error: "Domain is required" }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
     }
+
+    // 根据操作类型处理请求
+    switch (action) {
+      case 'delete':
+        // 删除自定义域名
+        await KV_NAMESPACE.delete(`whois_${domain}`);
+        break;
+        
+      case 'update-whois':
+        // 更新 WHOIS 信息
+        const whoisInfo = await fetchWhoisInfo(domain);
+        await cacheWhoisInfo(domain, whoisInfo);
+        break;
+        
+      case 'add':
+        // 验证添加域名所需的参数
+        if (!system || !registrar || !registrationDate || !expirationDate) {
+          return new Response(JSON.stringify({ 
+            success: false, 
+            error: "Missing required fields for domain addition" 
+          }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+        
+        // 添加新域名
+        const newDomainInfo = {
+          domain,
+          system,
+          registrar,
+          registrationDate,
+          expirationDate,
+          isCustom: true
+        };
+        await cacheWhoisInfo(domain, newDomainInfo);
+        break;
+        
+        default:
+          // 更新域名信息
+          let domainInfo = await getCachedWhoisInfo(domain) || {};
+          const isCustom = domainInfo.isCustom || false; // 保留现有的 isCustom 状态，默认为 false
+          domainInfo = {
+            ...domainInfo,
+            registrar: registrar || domainInfo.registrar,
+            registrationDate: registrationDate || domainInfo.registrationDate,
+            expirationDate: expirationDate || domainInfo.expirationDate,
+            isCustom: isCustom // 恢复 isCustom 状态
+          };
+          await cacheWhoisInfo(domain, domainInfo);
+      }
 
     return new Response(JSON.stringify({ success: true }), {
       status: 200,
@@ -258,105 +378,182 @@ async function handleApiUpdate(request) {
 }
 
 
+/**
+ * 从Cloudflare API获取域名信息
+ * @returns {Promise<Array>} - 域名信息数组
+ */
 async function fetchCloudflareDomainsInfo() {
-  const response = await fetch('https://api.cloudflare.com/client/v4/zones', {
-    headers: {
-      'Authorization': `Bearer ${CF_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-  });
+  try {
+    console.log('Fetching domains from Cloudflare API...');
+    
+    const response = await fetch('https://api.cloudflare.com/client/v4/zones', {
+      headers: {
+        'Authorization': `Bearer ${CONFIG.CF_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      cf: {
+        cacheTtl: 300, // 5分钟缓存
+        cacheEverything: true
+      }
+    });
 
-  if (!response.ok) {
-    throw new Error('Failed to fetch domains from Cloudflare');
+    if (!response.ok) {
+      throw new Error(`Failed to fetch domains from Cloudflare: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    if (!data.success) {
+      throw new Error(`Cloudflare API request failed: ${data.errors?.[0]?.message || 'Unknown error'}`);
+    }
+
+    console.log(`Successfully fetched ${data.result.length} domains from Cloudflare`);
+    
+    return data.result.map(zone => ({
+      domain: zone.name,
+      registrationDate: new Date(zone.created_on).toISOString().split('T')[0],
+      system: 'Cloudflare',
+    }));
+  } catch (error) {
+    console.error('Error fetching Cloudflare domains:', error);
+    // 返回空数组而不是抛出错误，这样即使Cloudflare API失败，系统仍然可以显示自定义域名
+    return [];
   }
-
-  const data = await response.json();
-  if (!data.success) {
-    throw new Error('Cloudflare API request failed');
-  }
-
-  return data.result.map(zone => ({
-    domain: zone.name,
-    registrationDate: new Date(zone.created_on).toISOString().split('T')[0],
-    system: 'Cloudflare',
-  }));
 }
 
 
+/**
+ * 获取所有域名信息，包括Cloudflare域名和自定义域名
+ * @param {Array} domains - Cloudflare域名数组
+ * @returns {Promise<Array>} - 所有域名信息数组
+ */
 async function fetchDomainInfo(domains) {
-  const result = [];
+  try {
+    console.log('Fetching all domain information...');
+    const result = [];
+    const domainMap = new Map(); // 用于去重
 
-  // 获取所有域名信息，包括自定义域名
-  const allDomainKeys = await KV_NAMESPACE.list({ prefix: 'whois_' });
-  const allDomains = await Promise.all(allDomainKeys.keys.map(async (key) => {
-    const value = await KV_NAMESPACE.get(key.name);
-    if (value) {
+    // 获取所有自定义域名信息
+    const allDomainKeys = await KV_NAMESPACE.list({ prefix: 'whois_' });
+    console.log(`Found ${allDomainKeys.keys.length} domain keys in KV storage`);
+    
+    // 并行获取所有域名数据
+    const allDomains = await Promise.all(allDomainKeys.keys.map(async (key) => {
       try {
+        const value = await KV_NAMESPACE.get(key.name);
+        if (!value) return null;
+        
         const parsedValue = JSON.parse(value);
         return parsedValue.data;
       } catch (error) {
-        console.error(`Error parsing data for ${key.name}:`, error);
+        console.error(`Error retrieving data for ${key.name}:`, error);
         return null;
       }
-    }
-    return null;
-  }));
+    }));
 
-  // 过滤掉无效的域名数据
-  const validAllDomains = allDomains.filter(d => d && d.isCustom);
+    // 过滤掉无效的域名数据，只保留自定义域名
+    const validCustomDomains = allDomains.filter(d => d && d.isCustom);
+    console.log(`Found ${validCustomDomains.length} valid custom domains`);
 
-  // 合并 Cloudflare 域名和自定义域名
-  const mergedDomains = [...domains, ...validAllDomains];
-
-  for (const domain of mergedDomains) {
-    if (!domain) continue; // 跳过无效的域名数据
-
-    let domainInfo = { ...domain };
-
-    const cachedInfo = await getCachedWhoisInfo(domain.domain || domain);
-    if (cachedInfo) {
-      domainInfo = { ...domainInfo, ...cachedInfo };
-    } else if (!domainInfo.isCustom && domainInfo.domain && domainInfo.domain.split('.').length === 2 && WHOIS_PROXY_URL) {
-      try {
-        const whoisInfo = await fetchWhoisInfo(domainInfo.domain);
-        domainInfo = { ...domainInfo, ...whoisInfo };
-        if (!whoisInfo.whoisError) {
-          await cacheWhoisInfo(domainInfo.domain, whoisInfo);
+    // 合并 Cloudflare 域名和自定义域名，确保域名唯一性
+    const mergedDomains = [...domains, ...validCustomDomains];
+    
+    // 批量处理域名信息，提高性能
+    const domainPromises = mergedDomains.map(async (domain) => {
+      if (!domain) return null; // 跳过无效的域名数据
+      
+      const domainKey = domain.domain || domain;
+      if (domainMap.has(domainKey)) return null; // 跳过重复域名
+      domainMap.set(domainKey, true);
+      
+      let domainInfo = { ...domain };
+      const cachedInfo = await getCachedWhoisInfo(domainKey);
+      
+      if (cachedInfo) {
+        // 使用缓存数据
+        domainInfo = { ...domainInfo, ...cachedInfo };
+      } else if (!domainInfo.isCustom && domainInfo.domain && 
+                domainInfo.domain.split('.').length === 2 && 
+                CONFIG.WHOIS_PROXY_URL) {
+        // 只为顶级域名获取WHOIS信息
+        try {
+          const whoisInfo = await fetchWhoisInfo(domainInfo.domain);
+          domainInfo = { ...domainInfo, ...whoisInfo };
+          
+          // 只缓存有效的WHOIS信息
+          if (!whoisInfo.whoisError) {
+            await cacheWhoisInfo(domainInfo.domain, whoisInfo);
+          }
+        } catch (error) {
+          console.error(`Error fetching WHOIS info for ${domainInfo.domain}:`, error);
+          domainInfo.whoisError = error.message;
         }
-      } catch (error) {
-        console.error(`Error fetching WHOIS info for ${domainInfo.domain}:`, error);
-        domainInfo.whoisError = error.message;
       }
-    }
-
-    result.push(domainInfo);
+      
+      return domainInfo;
+    });
+    
+    // 等待所有域名处理完成
+    const processedDomains = await Promise.all(domainPromises);
+    
+    // 过滤掉无效结果并返回
+    return processedDomains.filter(Boolean);
+  } catch (error) {
+    console.error('Error in fetchDomainInfo:', error);
+    // 返回空数组而不是抛出错误，确保页面仍然可以加载
+    return [];
   }
-  return result;
 }
 
 
+/**
+ * 处理WHOIS查询请求
+ * @param {string} domain - 要查询的域名
+ * @returns {Promise<Response>} - 响应对象
+ */
 async function handleWhoisRequest(domain) {
-  console.log(`Handling WHOIS request for domain: ${domain}`);
-
   try {
-    console.log(`Fetching WHOIS data from: ${WHOIS_PROXY_URL}/whois/${domain}`);
-    const response = await fetch(`${WHOIS_PROXY_URL}/whois/${domain}`);
+    if (!domain) {
+      throw new Error('Domain parameter is required');
+    }
+    
+    console.log(`Handling WHOIS request for domain: ${domain}`);
+    
+    // 构建WHOIS API请求URL
+    const whoisUrl = `${CONFIG.WHOIS_PROXY_URL}/whois/${domain}`;
+    console.log(`Fetching WHOIS data from: ${whoisUrl}`);
+    
+    // 发送请求并设置超时
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10秒超时
+    
+    const response = await fetch(whoisUrl, {
+      signal: controller.signal,
+      cf: {
+        cacheTtl: 3600, // 1小时缓存
+        cacheEverything: true
+      }
+    }).finally(() => clearTimeout(timeoutId));
 
     if (!response.ok) {
-      throw new Error(`WHOIS API responded with status: ${response.status}`);
+      throw new Error(`WHOIS API responded with status: ${response.status} ${response.statusText}`);
     }
 
     const whoisData = await response.json();
-    console.log(`Received WHOIS data:`, whoisData);
-
+    
+    // 返回成功响应
     return new Response(JSON.stringify({
       error: false,
       rawData: whoisData.rawData
     }), {
-      headers: { 'Content-Type': 'application/json' }
+      headers: { 
+        'Content-Type': 'application/json',
+        'Cache-Control': 'public, max-age=3600'
+      }
     });
   } catch (error) {
     console.error(`Error fetching WHOIS data for ${domain}:`, error);
+    
+    // 返回错误响应，但保持200状态码以便前端处理
     return new Response(JSON.stringify({
       error: true,
       message: `Failed to fetch WHOIS data for ${domain}. Error: ${error.message}`
@@ -367,43 +564,185 @@ async function handleWhoisRequest(domain) {
   }
 }
 
-async function fetchWhoisInfo(domain) {
-  try {
-    const response = await fetch(`${WHOIS_PROXY_URL}/whois/${domain}`);
-    const whoisData = await response.json();
+/**
+ * 获取域名的WHOIS信息
+ * @param {string} domain - 要查询的域名
+ * @param {string|null} apiKey - 可选的API密钥
+ * @param {number} timeout - 请求超时时间(毫秒)，默认10秒
+ * @param {number} retries - 请求失败重试次数，默认0
+ * @returns {Promise<Object>} - 包含域名注册商、注册日期和到期日期的对象
+ */
+async function fetchWhoisInfo(domain, apiKey = null, timeout = 10000, retries = 0) {
+  if (!domain) {
+    console.error('Domain parameter is required');
+    return createErrorResponse('Domain parameter is required');
+  }
 
-    console.log('Raw WHOIS proxy response:', JSON.stringify(whoisData, null, 2));
+  console.log(`Fetching WHOIS info for domain: ${domain}${apiKey ? ' with API key' : ''}`);
+  
+  let currentTry = 0;
+  let lastError = null;
 
-    if (whoisData) {
-      return {
-        registrar: whoisData.registrar || 'Unknown',
-        registrationDate: formatDate(whoisData.creationDate) || 'Unknown',
-        expirationDate: formatDate(whoisData.expirationDate) || 'Unknown'
-      };
-    } else {
-      console.warn(`Incomplete WHOIS data for ${domain}`);
-      return {
-        registrar: 'Unknown',
-        registrationDate: 'Unknown',
-        expirationDate: 'Unknown',
-        whoisError: 'Incomplete WHOIS data'
-      };
+  // 重试逻辑
+  while (currentTry <= retries) {
+    try {
+      if (currentTry > 0) {
+        console.log(`Retry attempt ${currentTry} for domain ${domain}`);
+      }
+
+      // 构建请求URL
+      let url = `${CONFIG.WHOIS_PROXY_URL}/whois/${domain}`;
+      if (apiKey) {
+        url += `?apiKey=${encodeURIComponent(apiKey)}`;
+      }
+
+      // 设置请求超时
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+      // 发送请求
+      const response = await fetch(url, {
+        signal: controller.signal,
+        cf: {
+          cacheTtl: 3600, // 1小时缓存
+          cacheEverything: true
+        }
+      }).finally(() => clearTimeout(timeoutId));
+
+      // 检查响应状态
+      if (!response.ok) {
+        throw new Error(`WHOIS proxy responded with status: ${response.status} ${response.statusText}`);
+      }
+
+      // 解析响应数据
+      const whoisData = await response.json();
+      
+      // 记录原始响应数据（仅在开发环境或调试时使用）
+      if (whoisData) {
+        console.log(`Successfully fetched WHOIS data for ${domain}`);
+        // 仅记录关键字段，避免日志过大
+        console.log('WHOIS data fields:', Object.keys(whoisData).join(', '));
+      }
+
+      // 处理响应数据
+      if (whoisData && (whoisData.registrar || whoisData.creationDate || whoisData.expirationDate)) {
+        return {
+          registrar: whoisData.registrar || 'Unknown',
+          registrationDate: formatDate(whoisData.creationDate) || 'Unknown',
+          expirationDate: formatDate(whoisData.expirationDate) || 'Unknown'
+        };
+      } else if (whoisData && whoisData.rawData) {
+        // 尝试从原始数据中提取信息
+        console.log('Using rawData to extract WHOIS information');
+        return extractWhoisInfoFromRawData(whoisData.rawData, domain);
+      } else {
+        console.warn(`Incomplete WHOIS data for ${domain}`);
+        return createErrorResponse('Incomplete WHOIS data');
+      }
+    } catch (error) {
+      lastError = error;
+      console.error(`Error fetching WHOIS info for ${domain} (attempt ${currentTry + 1}/${retries + 1}):`, error);
+      
+      // 判断是否需要重试
+      if (error.name === 'AbortError') {
+        console.warn(`Request timeout for ${domain}`);
+      } else if (!navigator.onLine) {
+        console.warn('Network appears to be offline');
+      }
+      
+      // 如果还有重试次数，则继续
+      if (currentTry < retries) {
+        currentTry++;
+        // 指数退避策略
+        const delay = Math.min(1000 * Math.pow(2, currentTry), 8000);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      
+      // 已达到最大重试次数，返回错误响应
+      return createErrorResponse(error.message);
     }
-  } catch (error) {
-    console.error('Error fetching WHOIS info:', error);
+  }
+  
+  // 不应该到达这里，但以防万一
+  return createErrorResponse(lastError ? lastError.message : 'Unknown error');
+}
+
+/**
+ * 从原始WHOIS数据中提取关键信息
+ * @param {string} rawData - 原始WHOIS数据
+ * @param {string} domain - 域名
+ * @returns {Object} - 提取的WHOIS信息
+ */
+function extractWhoisInfoFromRawData(rawData, domain) {
+  if (!rawData) return createErrorResponse('No raw WHOIS data available');
+  
+  try {
+    // 尝试提取注册商信息
+    let registrar = 'Unknown';
+    const registrarMatches = rawData.match(/Registrar:\s*([^\n]+)/i) || 
+                            rawData.match(/Sponsoring Registrar:\s*([^\n]+)/i);
+    if (registrarMatches && registrarMatches[1]) {
+      registrar = registrarMatches[1].trim();
+    }
+    
+    // 尝试提取创建日期
+    let creationDate = null;
+    const creationMatches = rawData.match(/Creation Date:\s*([^\n]+)/i) || 
+                           rawData.match(/Registered on:\s*([^\n]+)/i) ||
+                           rawData.match(/Registration Date:\s*([^\n]+)/i);
+    if (creationMatches && creationMatches[1]) {
+      creationDate = creationMatches[1].trim();
+    }
+    
+    // 尝试提取过期日期
+    let expirationDate = null;
+    const expirationMatches = rawData.match(/Expir\w+ Date:\s*([^\n]+)/i) ||
+                             rawData.match(/Registry Expiry Date:\s*([^\n]+)/i);
+    if (expirationMatches && expirationMatches[1]) {
+      expirationDate = expirationMatches[1].trim();
+    }
+    
     return {
-      registrar: 'Unknown',
-      registrationDate: 'Unknown',
-      expirationDate: 'Unknown',
-      whoisError: error.message
+      registrar: registrar,
+      registrationDate: formatDate(creationDate) || 'Unknown',
+      expirationDate: formatDate(expirationDate) || 'Unknown'
     };
+  } catch (error) {
+    console.error(`Error extracting WHOIS info from raw data for ${domain}:`, error);
+    return createErrorResponse('Failed to parse raw WHOIS data');
   }
 }
 
+/**
+ * 创建标准错误响应对象
+ * @param {string} errorMessage - 错误消息
+ * @returns {Object} - 标准错误响应对象
+ */
+function createErrorResponse(errorMessage) {
+  return {
+    registrar: 'Unknown',
+    registrationDate: 'Unknown',
+    expirationDate: 'Unknown',
+    whoisError: errorMessage
+  };
+}
+
 function formatDate(dateString) {
+  // 如果输入为空，直接返回null
   if (!dateString) return null;
+  
+  // 尝试创建日期对象
   const date = new Date(dateString);
-  return isNaN(date.getTime()) ? dateString : date.toISOString().split('T')[0];
+  
+  // 检查日期是否有效
+  if (isNaN(date.getTime())) {
+    // 无效日期，返回原始字符串
+    return dateString;
+  }
+  
+  // 返回YYYY-MM-DD格式的日期字符串
+  return date.toISOString().split('T')[0];
 }
 
 
@@ -413,65 +752,114 @@ async function getCachedWhoisInfo(domain) {
   const cachedData = await KV_NAMESPACE.get(cacheKey);
   if (cachedData) {
     const { data, timestamp } = JSON.parse(cachedData);
+    
     // 检查是否有错误内容，如果有，删除它
     if (data.whoisError) {
       await KV_NAMESPACE.delete(cacheKey);
       return null;
     }
-    // 这里可以添加缓存过期检查，如果需要的话
+    
+    // 检查缓存是否过期 (使用CONFIG.CACHE_TTL配置，默认7天)
+    const cacheAge = Date.now() - timestamp;
+    const cacheTtlMs = CONFIG.CACHE_TTL * 1000; // 转换为毫秒
+    
+    if (cacheAge > cacheTtlMs) {
+      console.log(`Cache expired for domain ${domain}, age: ${Math.floor(cacheAge / 86400000)} days`);
+      await KV_NAMESPACE.delete(cacheKey);
+      return null;
+    }
+    
     return data;
   }
   return null;
 }
 
 
+/**
+ * 缓存域名的WHOIS信息
+ * @param {string} domain - 域名
+ * @param {Object} whoisInfo - WHOIS信息对象
+ * @returns {Promise<void>}
+ */
 async function cacheWhoisInfo(domain, whoisInfo) {
   const cacheKey = `whois_${domain}`;
   await KV_NAMESPACE.put(cacheKey, JSON.stringify({
     data: whoisInfo,
-    timestamp: Date.now()
+    timestamp: Date.now() // 记录缓存时间戳，用于后续判断缓存是否过期
   }));
+  console.log(`WHOIS info cached for domain ${domain}, will expire in ${CONFIG.CACHE_TTL/86400} days`);
 }
 
 
 function generateLoginHTML(title, action, errorMessage = "") {
   return `
   <!DOCTYPE html>
-  <html lang="zh-CN">
+  <html lang="zh-CN" class="light-mode">
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${title} - ${CUSTOM_TITLE}</title>
+    <meta name="theme-color" content="#4CAF50">
+    <title>${title} - ${CONFIG.CUSTOM_TITLE}</title>
      <style>
-      /* 统一的颜色变量 */
+      /* 统一的颜色变量 - 使用RGB格式便于透明度调整 */
       :root {
         --primary-color: #4CAF50;
+        --primary-color-rgb: 76, 175, 80;
         --error-color: #f44336;
+        --error-color-rgb: 244, 67, 54;
+        --success-color: #43a047;
+        --success-color-rgb: 67, 160, 71;
         --card-bg: rgba(255, 255, 255, 0.95);
         --text-color: #333333;
+        --text-color-secondary: #666666;
         --border-color: #dddddd;
         --input-bg: #f9f9f9;
         --input-border: #cccccc;
         --button-bg: var(--primary-color);
         --button-text: white;
-        --button-hover-bg: #43a047;
+        --button-hover-bg: var(--success-color);
+        --focus-shadow: 0 0 0 3px rgba(var(--primary-color-rgb), 0.2);
+        --box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        --transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
       }
 
       /* 暗黑模式下的颜色变量 */
+      .dark-mode {
+        --primary-color: #81c995;
+        --primary-color-rgb: 129, 201, 149;
+        --card-bg: rgba(45, 45, 45, 0.95);
+        --text-color: #ffffff;
+        --text-color-secondary: #bbbbbb;
+        --border-color: #404040;
+        --input-bg: rgba(255, 255, 255, 0.1);
+        --input-border: #404040;
+        --button-bg: #333333;
+        --button-text: #ffffff;
+        --button-hover-bg: #555555;
+        --focus-shadow: 0 0 0 3px rgba(var(--primary-color-rgb), 0.3);
+        --box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+      }
+      
+      /* 自动检测系统暗黑模式 */
       @media (prefers-color-scheme: dark) {
-        :root {
+        .light-mode:not(.dark-mode-override) {
+          --primary-color: #81c995;
+          --primary-color-rgb: 129, 201, 149;
           --card-bg: rgba(45, 45, 45, 0.95);
           --text-color: #ffffff;
+          --text-color-secondary: #bbbbbb;
           --border-color: #404040;
           --input-bg: rgba(255, 255, 255, 0.1);
           --input-border: #404040;
           --button-bg: #333333;
           --button-text: #ffffff;
           --button-hover-bg: #555555;
+          --focus-shadow: 0 0 0 3px rgba(var(--primary-color-rgb), 0.3);
+          --box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
         }
       }
 
-      /* 动画效果 */
+      /* 动画效果 - 性能优化 */
       @keyframes gradientBG {
         0% {
           background-position: 0% 50%;
@@ -496,6 +884,17 @@ function generateLoginHTML(title, action, errorMessage = "") {
         }
       }
 
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(-10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
       /* 页面通用样式 */
       body {
         margin: 0;
@@ -511,9 +910,11 @@ function generateLoginHTML(title, action, errorMessage = "") {
         animation: gradientBG 15s ease infinite;
         position: relative;
         overflow: hidden;
+        will-change: background-position;
+        transition: var(--transition);
       }
 
-      /* 动画背景形状 */
+      /* 动画背景形状 - 性能优化 */
       .animated-shapes {
         position: fixed;
         top: 0;
@@ -530,6 +931,8 @@ function generateLoginHTML(title, action, errorMessage = "") {
         background: rgba(255, 255, 255, 0.1);
         animation: float 6s ease-in-out infinite;
         backdrop-filter: blur(5px);
+        will-change: transform;
+        transform: translateZ(0);
       }
 
       .shape:nth-child(1) {
@@ -564,12 +967,12 @@ function generateLoginHTML(title, action, errorMessage = "") {
         animation-delay: -6s;
       }
 
-      /* 登录容器 */
+      /* 登录容器 - 增强视觉效果和性能 */
       .login-container {
         background: var(--card-bg);
         padding: 2.5rem;
         border-radius: 20px;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        box-shadow: var(--box-shadow);
         width: 100%;
         max-width: 400px;
         margin: 1rem;
@@ -578,6 +981,58 @@ function generateLoginHTML(title, action, errorMessage = "") {
         backdrop-filter: blur(10px);
         border: 1px solid rgba(255, 255, 255, 0.2);
         transform: translateZ(0);
+        will-change: transform, opacity;
+        animation: fadeIn 0.5s ease-out;
+        transition: var(--transition);
+      }
+      
+      /* 登录容器顶部装饰条 */
+      .login-container::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 5px;
+        background: var(--primary-color);
+        border-radius: 20px 20px 0 0;
+      }
+      
+      /* 暗黑模式切换按钮 */
+      .mode-toggle {
+        position: absolute;
+        top: 15px;
+        right: 15px;
+        background: transparent;
+        border: none;
+        color: var(--text-color-secondary);
+        cursor: pointer;
+        font-size: 1.2rem;
+        padding: 5px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: var(--transition);
+        z-index: 3;
+      }
+      
+      .mode-toggle:hover {
+        background: rgba(var(--primary-color-rgb), 0.1);
+      }
+      
+      .mode-toggle:focus {
+        outline: none;
+        box-shadow: var(--focus-shadow);
+      }
+      
+      .sun-icon, .moon-icon {
+        width: 20px;
+        height: 20px;
+      }
+      
+      .moon-icon {
+        display: none;
       }
 
       /* 标题 */
@@ -587,6 +1042,7 @@ function generateLoginHTML(title, action, errorMessage = "") {
         margin-bottom: 1.5rem;
         font-size: 1.8rem;
         font-weight: 600;
+        transition: var(--transition);
       }
 
       /* 表单 */
@@ -596,25 +1052,33 @@ function generateLoginHTML(title, action, errorMessage = "") {
         gap: 1.2rem;
       }
 
-      /* 输入框 */
+      /* 输入框 - 增强可访问性 */
       input {
         padding: 1rem;
         border: 2px solid var(--input-border);
         border-radius: 12px;
         font-size: 1rem;
-        transition: all 0.3s ease;
+        transition: var(--transition);
         background: var(--input-bg);
         color: var(--text-color);
+        width: 100%;
+        box-sizing: border-box;
       }
 
       input:focus {
         outline: none;
         border-color: var(--primary-color);
-        box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.2);
+        box-shadow: var(--focus-shadow);
         transform: translateY(-2px);
       }
+      
+      /* 键盘焦点样式 */
+      input:focus-visible {
+        outline: 2px solid var(--primary-color);
+        outline-offset: 1px;
+      }
 
-      /* 提交按钮 */
+      /* 提交按钮 - 增强视觉反馈 */
       input[type="submit"] {
         background: var(--button-bg);
         color: var(--button-text);
@@ -622,7 +1086,23 @@ function generateLoginHTML(title, action, errorMessage = "") {
         padding: 1rem;
         font-weight: 600;
         cursor: pointer;
-        transition: all 0.3s ease;
+        transition: var(--transition);
+        border-radius: 12px;
+        position: relative;
+        overflow: hidden;
+        will-change: transform;
+      }
+
+      input[type="submit"]::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(255, 255, 255, 0.1);
+        transform: translateX(-100%);
+        transition: transform 0.3s ease;
       }
 
       input[type="submit"]:hover {
@@ -631,40 +1111,76 @@ function generateLoginHTML(title, action, errorMessage = "") {
         box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
       }
 
+      input[type="submit"]:hover::before {
+        transform: translateX(0);
+      }
+
       input[type="submit"]:active {
         transform: translateY(0);
       }
 
-      /* 错误消息 */
+      input[type="submit"]:focus {
+        box-shadow: var(--focus-shadow);
+      }
+
+      /* 错误消息 - 增强视觉反馈 */
       .error-message {
         color: var(--error-color);
-        background: rgba(244, 67, 54, 0.1);
+        background: rgba(var(--error-color-rgb), 0.1);
         padding: 1rem;
         border-radius: 12px;
         text-align: center;
         margin-bottom: 1rem;
-        border: 1px solid rgba(244, 67, 54, 0.2);
+        border: 1px solid rgba(var(--error-color-rgb), 0.2);
         backdrop-filter: blur(5px);
+        animation: shake 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+        transform: translateZ(0);
+      }
+      
+      @keyframes shake {
+        10%, 90% { transform: translateX(-1px); }
+        20%, 80% { transform: translateX(2px); }
+        30%, 50%, 70% { transform: translateX(-4px); }
+        40%, 60% { transform: translateX(4px); }
       }
 
-      /* 响应式布局 */
+      /* 响应式布局 - 优化移动端体验 */
       @media (max-width: 480px) {
         .login-container {
           margin: 1rem;
           padding: 1.5rem;
+          width: calc(100% - 2rem);
         }
 
         h1 {
           font-size: 1.5rem;
         }
+        
+        input {
+          font-size: 16px; /* 防止iOS缩放 */
+          padding: 0.8rem;
+        }
+        
+        .shape {
+          opacity: 0.5; /* 减少移动端视觉干扰 */
+        }
       }
 
       /* 页脚 */
-      footer {
+      .footer-wrapper {
         position: relative;
         z-index: 2;
+        margin-top: 2rem;
+        text-align: center;
+        width: 100%;
+      }
+      
+      footer {
         background: transparent !important;
-        color: white !important;
+        color: rgba(255, 255, 255, 0.8) !important;
+        font-size: 0.9rem;
+        padding: 1rem;
+        transition: var(--transition);
       }
     </style>
   </head>
@@ -676,14 +1192,52 @@ function generateLoginHTML(title, action, errorMessage = "") {
       <div class="shape"></div>
     </div>
     <div class="login-container">
+      <button id="modeToggle" class="mode-toggle" aria-label="切换暗黑/明亮模式">
+        <svg class="sun-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+        <svg class="moon-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+      </button>
       <h1>${title}</h1>
-      ${errorMessage ? `<div class="error-message">${errorMessage}</div>` : ''}
+      ${errorMessage ? `<div class="error-message" role="alert">${errorMessage}</div>` : ''}
       <form method="POST" action="${action}">
-        <input type="password" name="password" placeholder="请输入密码" required>
+        <div class="input-container">
+          <input type="password" name="password" id="password" placeholder="请输入密码" required aria-label="密码">
+        </div>
         <input type="submit" value="登录">
       </form>
     </div>
-    ${footerHTML}
+    <div class="footer-wrapper">
+      ${footerHTML}
+    </div>
+    
+    <script>
+      // 暗黑/明亮模式切换
+      const modeToggle = document.getElementById('modeToggle');
+      const html = document.documentElement;
+      const sunIcon = document.querySelector('.sun-icon');
+      const moonIcon = document.querySelector('.moon-icon');
+      
+      // 检查本地存储的模式偏好
+      const savedMode = localStorage.getItem('colorMode');
+      if (savedMode === 'dark') {
+        html.classList.add('dark-mode');
+        sunIcon.style.display = 'none';
+        moonIcon.style.display = 'block';
+      }
+      
+      modeToggle.addEventListener('click', () => {
+        html.classList.toggle('dark-mode');
+        
+        if (html.classList.contains('dark-mode')) {
+          localStorage.setItem('colorMode', 'dark');
+          sunIcon.style.display = 'none';
+          moonIcon.style.display = 'block';
+        } else {
+          localStorage.setItem('colorMode', 'light');
+          sunIcon.style.display = 'block';
+          moonIcon.style.display = 'none';
+        }
+      });
+    </script>
   </body>
   </html>
   `;
@@ -759,7 +1313,7 @@ function generateHTML(domains, isAdmin) {
   <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${CUSTOM_TITLE}${isAdmin ? ' - 后台管理' : ''}</title>
+  <title>${CONFIG.CUSTOM_TITLE}${isAdmin ? ' - 后台管理' : ''}</title>
   <style>
     /* 统一的颜色变量 */
     :root {
@@ -1011,7 +1565,7 @@ function generateHTML(domains, isAdmin) {
   🌓
 </button>
     <div class="container">
-        <h1>${CUSTOM_TITLE}${isAdmin ? ' - 后台管理' : ''}</h1>
+        <h1>${CONFIG.CUSTOM_TITLE}${isAdmin ? ' - 后台管理' : ''}</h1>
         <div class="admin-link">${adminLink}</div>
   
         <div class="table-wrapper">
@@ -1055,49 +1609,61 @@ function generateHTML(domains, isAdmin) {
     </div>
     <script>
     // 添加主题切换功能
-  function setupThemeSwitch() {
-  const themeSwitch = document.getElementById('themeSwitch');
-  const prefersDarkScheme = window.matchMedia('(prefers-color-scheme: dark)');
-  
-  // 从本地存储获取主题设置
-  const currentTheme = localStorage.getItem('theme') || 
-    (prefersDarkScheme.matches ? 'dark' : 'light');
-  
-  // 应用初始主题
-  document.documentElement.setAttribute('data-theme', currentTheme);
-  
-  // 更新主题图标
-  updateThemeIcon(currentTheme);
-  
-  // 添加切换事件监听
-  themeSwitch.addEventListener('click', () => {
-    const newTheme = document.documentElement.getAttribute('data-theme') === 'dark' 
-      ? 'light' 
-      : 'dark';
-    
-    document.documentElement.setAttribute('data-theme', newTheme);
-    localStorage.setItem('theme', newTheme);
-    updateThemeIcon(newTheme);
-  });
-  
-  // 监听系统主题变化
-  prefersDarkScheme.addEventListener('change', (e) => {
-    if (!localStorage.getItem('theme')) {
-      const newTheme = e.matches ? 'dark' : 'light';
-      document.documentElement.setAttribute('data-theme', newTheme);
-      updateThemeIcon(newTheme);
+    function setupThemeSwitch() {
+      const themeSwitch = document.getElementById('themeSwitch');
+      const prefersDarkScheme = window.matchMedia('(prefers-color-scheme: dark)');
+      
+      // 从本地存储获取主题设置
+      const currentTheme = localStorage.getItem('theme') || 
+        (prefersDarkScheme.matches ? 'dark' : 'light');
+      
+      // 应用初始主题
+      document.documentElement.setAttribute('data-theme', currentTheme);
+      
+      // 更新主题图标
+      updateThemeIcon(currentTheme);
+      
+      // 添加切换事件监听
+      themeSwitch.addEventListener('click', () => {
+        const newTheme = document.documentElement.getAttribute('data-theme') === 'dark' 
+          ? 'light' 
+          : 'dark';
+        
+        document.documentElement.setAttribute('data-theme', newTheme);
+        localStorage.setItem('theme', newTheme);
+        updateThemeIcon(newTheme);
+        
+        // 添加过渡动画
+        document.body.classList.add('theme-transition');
+        setTimeout(() => {
+          document.body.classList.remove('theme-transition');
+        }, 500);
+      });
+      
+      // 监听系统主题变化
+      prefersDarkScheme.addEventListener('change', (e) => {
+        if (!localStorage.getItem('theme')) {
+          const newTheme = e.matches ? 'dark' : 'light';
+          document.documentElement.setAttribute('data-theme', newTheme);
+          updateThemeIcon(newTheme);
+        }
+      });
     }
-  });
-}
 
-function updateThemeIcon(theme) {
-  const themeSwitch = document.getElementById('themeSwitch');
-  themeSwitch.textContent = theme === 'dark' ? '🌞' : '🌓';
-  themeSwitch.title = theme === 'dark' ? '切换到明亮模式' : '切换到暗黑模式';
-}
+    function updateThemeIcon(theme) {
+      const themeSwitch = document.getElementById('themeSwitch');
+      themeSwitch.textContent = theme === 'dark' ? '🌞' : '🌓';
+      themeSwitch.title = theme === 'dark' ? '切换到明亮模式' : '切换到暗黑模式';
+      
+      // 添加图标动画
+      themeSwitch.classList.add('rotate-icon');
+      setTimeout(() => {
+        themeSwitch.classList.remove('rotate-icon');
+      }, 500);
+    }
 
-// 页面加载完成后初始化主题切换
-document.addEventListener('DOMContentLoaded', setupThemeSwitch);
+    // 页面加载完成后初始化主题切换
+    document.addEventListener('DOMContentLoaded', setupThemeSwitch);
 
       async function editDomain(domain, button) {
       const row = button.closest('tr');
@@ -1125,7 +1691,7 @@ document.addEventListener('DOMContentLoaded', setupThemeSwitch);
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': 'Basic ' + btoa(':${ADMIN_PASSWORD}')
+              'Authorization': 'Basic ' + btoa(':${CONFIG.ADMIN_PASSWORD}')
             },
             body: JSON.stringify(updatedData)
           });
@@ -1152,7 +1718,7 @@ document.addEventListener('DOMContentLoaded', setupThemeSwitch);
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': 'Basic ' + btoa(':${ADMIN_PASSWORD}')
+              'Authorization': 'Basic ' + btoa(':${CONFIG.ADMIN_PASSWORD}')
             },
             body: JSON.stringify({
               action: 'delete',
@@ -1186,7 +1752,7 @@ document.addEventListener('DOMContentLoaded', setupThemeSwitch);
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': 'Basic ' + btoa(':${ADMIN_PASSWORD}')
+            'Authorization': 'Basic ' + btoa(':${CONFIG.ADMIN_PASSWORD}')
           },
           body: JSON.stringify({
             action: 'update-whois',
@@ -1261,7 +1827,7 @@ document.addEventListener('DOMContentLoaded', setupThemeSwitch);
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': 'Basic ' + btoa(':' + '${ADMIN_PASSWORD}')
+              'Authorization': 'Basic ' + btoa(':' + '${CONFIG.ADMIN_PASSWORD}')
             },
             body: JSON.stringify({
               action: 'add',
@@ -1356,36 +1922,21 @@ document.addEventListener('DOMContentLoaded', setupThemeSwitch);
 }
 
 
-const STATUS_COLORS = {
-  UNKNOWN: '#808080',
-  URGENT: '#ff0000',
-  WARNING: '#ffa500',
-  NOTICE: '#ffff00',
-  NORMAL: '#00ff00'
-};
-
-const STATUS_TITLES = {
-  UNKNOWN: '未知状态',
-  URGENT: '紧急',
-  WARNING: '警告',
-  NOTICE: '注意',
-  NORMAL: '正常'
-};
-
+// Update the status helper functions to use CONFIG.STATUS instead:
 function getStatusColor(daysRemaining) {
-  if (isNaN(daysRemaining)) return STATUS_COLORS.UNKNOWN;
-  if (daysRemaining <= 7) return STATUS_COLORS.URGENT;
-  if (daysRemaining <= 30) return STATUS_COLORS.WARNING;
-  if (daysRemaining <= 90) return STATUS_COLORS.NOTICE;
-  return STATUS_COLORS.NORMAL;
+  if (isNaN(daysRemaining)) return CONFIG.STATUS.UNKNOWN.color;
+  if (daysRemaining <= CONFIG.STATUS.URGENT.days) return CONFIG.STATUS.URGENT.color;
+  if (daysRemaining <= CONFIG.STATUS.WARNING.days) return CONFIG.STATUS.WARNING.color;
+  if (daysRemaining <= CONFIG.STATUS.NOTICE.days) return CONFIG.STATUS.NOTICE.color;
+  return CONFIG.STATUS.NORMAL.color;
 }
 
 function getStatusTitle(daysRemaining) {
-  if (isNaN(daysRemaining)) return STATUS_TITLES.UNKNOWN;
-  if (daysRemaining <= 7) return STATUS_TITLES.URGENT;
-  if (daysRemaining <= 30) return STATUS_TITLES.WARNING;
-  if (daysRemaining <= 90) return STATUS_TITLES.NOTICE;
-  return STATUS_TITLES.NORMAL;
+  if (isNaN(daysRemaining)) return CONFIG.STATUS.UNKNOWN.title;
+  if (daysRemaining <= CONFIG.STATUS.URGENT.days) return CONFIG.STATUS.URGENT.title;
+  if (daysRemaining <= CONFIG.STATUS.WARNING.days) return CONFIG.STATUS.WARNING.title;
+  if (daysRemaining <= CONFIG.STATUS.NOTICE.days) return CONFIG.STATUS.NOTICE.title;
+  return CONFIG.STATUS.NORMAL.title;
 }
 
 function categorizeDomains(domains) {
