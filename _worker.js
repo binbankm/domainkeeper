@@ -12,12 +12,12 @@ const CONFIG = {
   VERSION: "2.1.0",
   CUSTOM_TITLE: "域名管理",  
   // API配置
-  CF_API_KEY: "A0yVNlSDEPe4vjt6FbfKPAAaTd11sO_ZIxdEuZqH",
-  WHOIS_PROXY_URL: "https://whois.lbyan.us.kg",
+  CF_API_KEY: "",
+  WHOIS_PROXY_URL: "",
   
   // 安全配置
-  ACCESS_PASSWORD: "lbyan", // 可为空
-  ADMIN_PASSWORD: "lbyan", // 不可为空
+  ACCESS_PASSWORD: "", // 可为空
+  ADMIN_PASSWORD: "", // 不可为空
   
   // 存储配置
   KV_NAMESPACE: DOMAIN_INFO,
