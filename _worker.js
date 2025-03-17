@@ -3,26 +3,25 @@
  * 域名管理系统 - DomainKeeper
  * 版本: 2.1.0
  */
-
 // 配置常量
 const CONFIG = {
   // 应用信息
   VERSION: "2.1.0",
-  CUSTOM_TITLE: "域名管理",  
+  CUSTOM_TITLE: "域名管理",
   // API配置
-  CF_API_KEY: "",
-  WHOIS_PROXY_URL: "",
-  
+  CF_API_KEY: "A0yVNlSDEPe4vjt6FbfKPAAaTd11sO_ZIxdEuZqH",
+  WHOIS_PROXY_URL: "https://whois.lbyan.pp.ua",
+
   // 安全配置
-  ACCESS_PASSWORD: "", // 可为空
-  ADMIN_PASSWORD: "", // 不可为空
-  
+  ACCESS_PASSWORD: "lbyan", // 可为空
+  ADMIN_PASSWORD: "lbyan", // 不可为空
+
   // 存储配置
   KV_NAMESPACE: DOMAIN_INFO,
-  
+
   // 缓存配置
-  CACHE_TTL: 86400 * 7, // 7天缓存过期时间(秒)
-  
+  CACHE_TTL: null, // 7天缓存过期时间(秒)
+
   // 状态配置
   STATUS: {
     UNKNOWN: { color: '#808080', title: '未知状态' },
@@ -83,7 +82,7 @@ async function handleRequest(request) {
     if (routes[path]) {
       return await routes[path](request);
     }
-    
+
     // 处理前缀匹配路由
     if (path.startsWith("/whois/")) {
       const domain = path.split("/")[2];
@@ -91,28 +90,38 @@ async function handleRequest(request) {
     }
 
     // 未找到匹配路由
-    return new Response("Not Found", { 
+    return new Response("Not Found", {
       status: 404,
       headers: { 'Content-Type': 'text/plain' }
     });
   } catch (error) {
     console.error("Request handling error:", error);
-    return new Response(`Server Error: ${error.message}`, { 
+    return new Response(`Server Error: ${error.message}`, {
       status: 500,
       headers: { 'Content-Type': 'text/plain' }
     });
   }
 }
 async function cleanupKV() {
-  const list = await KV_NAMESPACE.list();
-  for (const key of list.keys) {
-    const value = await KV_NAMESPACE.get(key.name);
-    if (value) {
-      const { data } = JSON.parse(value);
-      if (data.whoisError) {
-        await KV_NAMESPACE.delete(key.name);
+  try {
+    const list = await KV_NAMESPACE.list();
+    for (const key of list.keys) {
+      try {
+        const value = await KV_NAMESPACE.get(key.name);
+        if (value) {
+          const { data } = JSON.parse(value);
+          // 只有当数据完全无效时才删除
+          if (!data || Object.keys(data).length === 0) {
+            await KV_NAMESPACE.delete(key.name);
+            console.log(`Cleaned up invalid data for key: ${key.name}`);
+          }
+        }
+      } catch (error) {
+        console.error(`Error processing KV key ${key.name}:`, error);
       }
     }
+  } catch (error) {
+    console.error('Error during KV cleanup:', error);
   }
 }
 async function handleManualQuery(request) {
@@ -151,16 +160,16 @@ async function handleFrontend(request) {
 
     console.log("Fetching Cloudflare domains info...");
     const domains = await fetchCloudflareDomainsInfo();
-    
+
     console.log("Fetching domain info...");
     const domainsWithInfo = await fetchDomainInfo(domains);
-    
+
     return new Response(generateHTML(domainsWithInfo, false), {
       headers: { 'Content-Type': 'text/html' },
     });
   } catch (error) {
     console.error("Frontend handling error:", error);
-    return new Response(`Error loading frontend: ${error.message}`, { 
+    return new Response(`Error loading frontend: ${error.message}`, {
       status: 500,
       headers: { 'Content-Type': 'text/plain' }
     });
@@ -187,7 +196,7 @@ async function handleAdmin(request) {
     });
   } catch (error) {
     console.error("Admin handling error:", error);
-    return new Response(`Error loading admin page: ${error.message}`, { 
+    return new Response(`Error loading admin page: ${error.message}`, {
       status: 500,
       headers: { 'Content-Type': 'text/plain' }
     });
@@ -220,13 +229,13 @@ async function handleLogin(request) {
         });
       }
     }
-    
+
     return new Response(generateLoginHTML("前台登录", "/login"), {
       headers: { "Content-Type": "text/html" }
     });
   } catch (error) {
     console.error("Login handling error:", error);
-    return new Response(`Login error: ${error.message}`, { 
+    return new Response(`Login error: ${error.message}`, {
       status: 500,
       headers: { 'Content-Type': 'text/plain' }
     });
@@ -266,7 +275,7 @@ async function handleAdminLogin(request) {
     });
   } catch (error) {
     console.error("Admin login handling error:", error);
-    return new Response(`Admin login error: ${error.message}`, { 
+    return new Response(`Admin login error: ${error.message}`, {
       status: 500,
       headers: { 'Content-Type': 'text/plain' }
     });
@@ -284,7 +293,7 @@ async function handleApiUpdate(request) {
   try {
     // 验证请求方法
     if (request.method !== "POST") {
-      return new Response(JSON.stringify({ success: false, error: "Method Not Allowed" }), { 
+      return new Response(JSON.stringify({ success: false, error: "Method Not Allowed" }), {
         status: 405,
         headers: { 'Content-Type': 'application/json' }
       });
@@ -293,7 +302,7 @@ async function handleApiUpdate(request) {
     // 验证身份认证
     const auth = request.headers.get("Authorization");
     if (!auth || auth !== `Basic ${btoa(`:${CONFIG.ADMIN_PASSWORD}`)}`) {
-      return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), { 
+      return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), {
         status: 401,
         headers: { 'Content-Type': 'application/json' }
       });
@@ -302,7 +311,7 @@ async function handleApiUpdate(request) {
     // 解析请求数据
     const data = await request.json();
     const { action, domain, system, registrar, registrationDate, expirationDate } = data;
-    
+
     // 验证必要参数
     if (!domain) {
       return new Response(JSON.stringify({ success: false, error: "Domain is required" }), {
@@ -314,28 +323,34 @@ async function handleApiUpdate(request) {
     // 根据操作类型处理请求
     switch (action) {
       case 'delete':
-        // 删除自定义域名
-        await KV_NAMESPACE.delete(`whois_${domain}`);
+        // 删除自定义域名前进行确认
+        const domainToDelete = await getCachedWhoisInfo(domain);
+        if (domainToDelete && domainToDelete.isCustom) {
+          await KV_NAMESPACE.delete(`whois_${domain}`);
+          console.log(`Deleted custom domain: ${domain}`);
+        } else {
+          console.log(`Attempted to delete non-custom domain: ${domain}`);
+        }
         break;
-        
+
       case 'update-whois':
         // 更新 WHOIS 信息
         const whoisInfo = await fetchWhoisInfo(domain);
         await cacheWhoisInfo(domain, whoisInfo);
         break;
-        
+
       case 'add':
         // 验证添加域名所需的参数
         if (!system || !registrar || !registrationDate || !expirationDate) {
-          return new Response(JSON.stringify({ 
-            success: false, 
-            error: "Missing required fields for domain addition" 
+          return new Response(JSON.stringify({
+            success: false,
+            error: "Missing required fields for domain addition"
           }), {
             status: 400,
             headers: { 'Content-Type': 'application/json' }
           });
         }
-        
+
         // 添加新域名
         const newDomainInfo = {
           domain,
@@ -347,20 +362,20 @@ async function handleApiUpdate(request) {
         };
         await cacheWhoisInfo(domain, newDomainInfo);
         break;
-        
-        default:
-          // 更新域名信息
-          let domainInfo = await getCachedWhoisInfo(domain) || {};
-          const isCustom = domainInfo.isCustom || false; // 保留现有的 isCustom 状态，默认为 false
-          domainInfo = {
-            ...domainInfo,
-            registrar: registrar || domainInfo.registrar,
-            registrationDate: registrationDate || domainInfo.registrationDate,
-            expirationDate: expirationDate || domainInfo.expirationDate,
-            isCustom: isCustom // 恢复 isCustom 状态
-          };
-          await cacheWhoisInfo(domain, domainInfo);
-      }
+
+      default:
+        // 更新域名信息
+        let domainInfo = await getCachedWhoisInfo(domain) || {};
+        const isCustom = domainInfo.isCustom || false; // 保留现有的 isCustom 状态，默认为 false
+        domainInfo = {
+          ...domainInfo,
+          registrar: registrar || domainInfo.registrar,
+          registrationDate: registrationDate || domainInfo.registrationDate,
+          expirationDate: expirationDate || domainInfo.expirationDate,
+          isCustom: isCustom // 恢复 isCustom 状态
+        };
+        await cacheWhoisInfo(domain, domainInfo);
+    }
 
     return new Response(JSON.stringify({ success: true }), {
       status: 200,
@@ -383,7 +398,7 @@ async function handleApiUpdate(request) {
 async function fetchCloudflareDomainsInfo() {
   try {
     console.log('Fetching domains from Cloudflare API...');
-    
+
     const response = await fetch('https://api.cloudflare.com/client/v4/zones', {
       headers: {
         'Authorization': `Bearer ${CONFIG.CF_API_KEY}`,
@@ -405,7 +420,7 @@ async function fetchCloudflareDomainsInfo() {
     }
 
     console.log(`Successfully fetched ${data.result.length} domains from Cloudflare`);
-    
+
     return data.result.map(zone => ({
       domain: zone.name,
       registrationDate: new Date(zone.created_on).toISOString().split('T')[0],
@@ -433,13 +448,13 @@ async function fetchDomainInfo(domains) {
     // 获取所有自定义域名信息
     const allDomainKeys = await KV_NAMESPACE.list({ prefix: 'whois_' });
     console.log(`Found ${allDomainKeys.keys.length} domain keys in KV storage`);
-    
+
     // 并行获取所有域名数据
     const allDomains = await Promise.all(allDomainKeys.keys.map(async (key) => {
       try {
         const value = await KV_NAMESPACE.get(key.name);
         if (!value) return null;
-        
+
         const parsedValue = JSON.parse(value);
         return parsedValue.data;
       } catch (error) {
@@ -454,29 +469,29 @@ async function fetchDomainInfo(domains) {
 
     // 合并 Cloudflare 域名和自定义域名，确保域名唯一性
     const mergedDomains = [...domains, ...validCustomDomains];
-    
+
     // 批量处理域名信息，提高性能
     const domainPromises = mergedDomains.map(async (domain) => {
       if (!domain) return null; // 跳过无效的域名数据
-      
+
       const domainKey = domain.domain || domain;
       if (domainMap.has(domainKey)) return null; // 跳过重复域名
       domainMap.set(domainKey, true);
-      
+
       let domainInfo = { ...domain };
       const cachedInfo = await getCachedWhoisInfo(domainKey);
-      
+
       if (cachedInfo) {
         // 使用缓存数据
         domainInfo = { ...domainInfo, ...cachedInfo };
-      } else if (!domainInfo.isCustom && domainInfo.domain && 
-                domainInfo.domain.split('.').length === 2 && 
-                CONFIG.WHOIS_PROXY_URL) {
+      } else if (!domainInfo.isCustom && domainInfo.domain &&
+        domainInfo.domain.split('.').length === 2 &&
+        CONFIG.WHOIS_PROXY_URL) {
         // 只为顶级域名获取WHOIS信息
         try {
           const whoisInfo = await fetchWhoisInfo(domainInfo.domain);
           domainInfo = { ...domainInfo, ...whoisInfo };
-          
+
           // 只缓存有效的WHOIS信息
           if (!whoisInfo.whoisError) {
             await cacheWhoisInfo(domainInfo.domain, whoisInfo);
@@ -486,13 +501,13 @@ async function fetchDomainInfo(domains) {
           domainInfo.whoisError = error.message;
         }
       }
-      
+
       return domainInfo;
     });
-    
+
     // 等待所有域名处理完成
     const processedDomains = await Promise.all(domainPromises);
-    
+
     // 过滤掉无效结果并返回
     return processedDomains.filter(Boolean);
   } catch (error) {
@@ -513,17 +528,17 @@ async function handleWhoisRequest(domain) {
     if (!domain) {
       throw new Error('Domain parameter is required');
     }
-    
+
     console.log(`Handling WHOIS request for domain: ${domain}`);
-    
+
     // 构建WHOIS API请求URL
     const whoisUrl = `${CONFIG.WHOIS_PROXY_URL}/whois/${domain}`;
     console.log(`Fetching WHOIS data from: ${whoisUrl}`);
-    
+
     // 发送请求并设置超时
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000); // 10秒超时
-    
+
     const response = await fetch(whoisUrl, {
       signal: controller.signal,
       cf: {
@@ -537,20 +552,20 @@ async function handleWhoisRequest(domain) {
     }
 
     const whoisData = await response.json();
-    
+
     // 返回成功响应
     return new Response(JSON.stringify({
       error: false,
       rawData: whoisData.rawData
     }), {
-      headers: { 
+      headers: {
         'Content-Type': 'application/json',
         'Cache-Control': 'public, max-age=3600'
       }
     });
   } catch (error) {
     console.error(`Error fetching WHOIS data for ${domain}:`, error);
-    
+
     // 返回错误响应，但保持200状态码以便前端处理
     return new Response(JSON.stringify({
       error: true,
@@ -577,7 +592,7 @@ async function fetchWhoisInfo(domain, apiKey = null, timeout = 10000, retries = 
   }
 
   console.log(`Fetching WHOIS info for domain: ${domain}${apiKey ? ' with API key' : ''}`);
-  
+
   let currentTry = 0;
   let lastError = null;
 
@@ -614,7 +629,7 @@ async function fetchWhoisInfo(domain, apiKey = null, timeout = 10000, retries = 
 
       // 解析响应数据
       const whoisData = await response.json();
-      
+
       // 记录原始响应数据（仅在开发环境或调试时使用）
       if (whoisData) {
         console.log(`Successfully fetched WHOIS data for ${domain}`);
@@ -640,14 +655,14 @@ async function fetchWhoisInfo(domain, apiKey = null, timeout = 10000, retries = 
     } catch (error) {
       lastError = error;
       console.error(`Error fetching WHOIS info for ${domain} (attempt ${currentTry + 1}/${retries + 1}):`, error);
-      
+
       // 判断是否需要重试
       if (error.name === 'AbortError') {
         console.warn(`Request timeout for ${domain}`);
       } else if (!navigator.onLine) {
         console.warn('Network appears to be offline');
       }
-      
+
       // 如果还有重试次数，则继续
       if (currentTry < retries) {
         currentTry++;
@@ -656,12 +671,12 @@ async function fetchWhoisInfo(domain, apiKey = null, timeout = 10000, retries = 
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;
       }
-      
+
       // 已达到最大重试次数，返回错误响应
       return createErrorResponse(error.message);
     }
   }
-  
+
   // 不应该到达这里，但以防万一
   return createErrorResponse(lastError ? lastError.message : 'Unknown error');
 }
@@ -674,33 +689,33 @@ async function fetchWhoisInfo(domain, apiKey = null, timeout = 10000, retries = 
  */
 function extractWhoisInfoFromRawData(rawData, domain) {
   if (!rawData) return createErrorResponse('No raw WHOIS data available');
-  
+
   try {
     // 尝试提取注册商信息
     let registrar = 'Unknown';
-    const registrarMatches = rawData.match(/Registrar:\s*([^\n]+)/i) || 
-                            rawData.match(/Sponsoring Registrar:\s*([^\n]+)/i);
+    const registrarMatches = rawData.match(/Registrar:\s*([^\n]+)/i) ||
+      rawData.match(/Sponsoring Registrar:\s*([^\n]+)/i);
     if (registrarMatches && registrarMatches[1]) {
       registrar = registrarMatches[1].trim();
     }
-    
+
     // 尝试提取创建日期
     let creationDate = null;
-    const creationMatches = rawData.match(/Creation Date:\s*([^\n]+)/i) || 
-                           rawData.match(/Registered on:\s*([^\n]+)/i) ||
-                           rawData.match(/Registration Date:\s*([^\n]+)/i);
+    const creationMatches = rawData.match(/Creation Date:\s*([^\n]+)/i) ||
+      rawData.match(/Registered on:\s*([^\n]+)/i) ||
+      rawData.match(/Registration Date:\s*([^\n]+)/i);
     if (creationMatches && creationMatches[1]) {
       creationDate = creationMatches[1].trim();
     }
-    
+
     // 尝试提取过期日期
     let expirationDate = null;
     const expirationMatches = rawData.match(/Expir\w+ Date:\s*([^\n]+)/i) ||
-                             rawData.match(/Registry Expiry Date:\s*([^\n]+)/i);
+      rawData.match(/Registry Expiry Date:\s*([^\n]+)/i);
     if (expirationMatches && expirationMatches[1]) {
       expirationDate = expirationMatches[1].trim();
     }
-    
+
     return {
       registrar: registrar,
       registrationDate: formatDate(creationDate) || 'Unknown',
@@ -727,51 +742,47 @@ function createErrorResponse(errorMessage) {
 }
 
 function formatDate(dateString) {
-  // 如果输入为空，直接返回null
   if (!dateString) return null;
-  
-  // 尝试创建日期对象
-  const date = new Date(dateString);
-  
-  // 检查日期是否有效
-  if (isNaN(date.getTime())) {
-    // 无效日期，返回原始字符串
+
+  try {
+    // 尝试创建日期对象
+    const date = new Date(dateString);
+
+    // 检查日期是否有效
+    if (isNaN(date.getTime())) {
+      return dateString;
+    }
+
+    // 考虑时区偏移，确保显示正确的日期
+    const userTimezoneOffset = date.getTimezoneOffset() * 60000;
+    const localDate = new Date(date.getTime() + userTimezoneOffset);
+
+    // 返回 YYYY-MM-DD 格式
+    return localDate.toISOString().split('T')[0];
+  } catch (error) {
+    console.error('Error formatting date:', error);
     return dateString;
   }
-  
-  // 返回YYYY-MM-DD格式的日期字符串
-  return date.toISOString().split('T')[0];
 }
-
 
 
 async function getCachedWhoisInfo(domain) {
   const cacheKey = `whois_${domain}`;
-  const cachedData = await KV_NAMESPACE.get(cacheKey);
-  if (cachedData) {
-    const { data, timestamp } = JSON.parse(cachedData);
-    
-    // 检查是否有错误内容，如果有，删除它
-    if (data.whoisError) {
-      await KV_NAMESPACE.delete(cacheKey);
-      return null;
+  try {
+    const cachedData = await KV_NAMESPACE.get(cacheKey);
+    if (cachedData) {
+      const { data } = JSON.parse(cachedData);
+
+      // 移除错误数据检查，保留数据
+      if (data && Object.keys(data).length > 0) {
+        return data;
+      }
     }
-    
-    // 检查缓存是否过期 (使用CONFIG.CACHE_TTL配置，默认7天)
-    const cacheAge = Date.now() - timestamp;
-    const cacheTtlMs = CONFIG.CACHE_TTL * 1000; // 转换为毫秒
-    
-    if (cacheAge > cacheTtlMs) {
-      console.log(`Cache expired for domain ${domain}, age: ${Math.floor(cacheAge / 86400000)} days`);
-      await KV_NAMESPACE.delete(cacheKey);
-      return null;
-    }
-    
-    return data;
+  } catch (error) {
+    console.error(`Error getting cached data for ${domain}:`, error);
   }
   return null;
 }
-
 
 /**
  * 缓存域名的WHOIS信息
@@ -781,11 +792,18 @@ async function getCachedWhoisInfo(domain) {
  */
 async function cacheWhoisInfo(domain, whoisInfo) {
   const cacheKey = `whois_${domain}`;
-  await KV_NAMESPACE.put(cacheKey, JSON.stringify({
-    data: whoisInfo,
-    timestamp: Date.now() // 记录缓存时间戳，用于后续判断缓存是否过期
-  }));
-  console.log(`WHOIS info cached for domain ${domain}, will expire in ${CONFIG.CACHE_TTL/86400} days`);
+  try {
+    // 移除时间戳，直接存储数据
+    await KV_NAMESPACE.put(cacheKey, JSON.stringify({
+      data: whoisInfo
+    }), {
+      // 可选：设置极长的过期时间（比如10年）
+      expirationTtl: 315576000 // 10年的秒数
+    });
+    console.log(`WHOIS info cached for domain ${domain}`);
+  } catch (error) {
+    console.error(`Error caching WHOIS info for ${domain}:`, error);
+  }
 }
 
 
@@ -1252,11 +1270,37 @@ function generateHTML(domains, isAdmin) {
       return '';
     }
     return domainList.map(info => {
+      // 改进日期计算逻辑
       const today = new Date();
-      const expirationDate = new Date(info.expirationDate);
-      const daysRemaining = info.expirationDate === 'Unknown' ? 'N/A' : Math.ceil((expirationDate - today) / (1000 * 60 * 60 * 24));
-      const totalDays = info.registrationDate === 'Unknown' || info.expirationDate === 'Unknown' ? 'N/A' : Math.ceil((expirationDate - new Date(info.registrationDate)) / (1000 * 60 * 60 * 24));
-      const progressPercentage = isNaN(daysRemaining) || isNaN(totalDays) ? 0 : 100 - (daysRemaining / totalDays * 100);
+      today.setHours(0, 0, 0, 0); // 设置时间为当天的开始
+
+      let daysRemaining = 'N/A';
+      let totalDays = 'N/A';
+      let progressPercentage = 0;
+
+      if (info.expirationDate !== 'Unknown') {
+        const expirationDate = new Date(info.expirationDate);
+        expirationDate.setHours(0, 0, 0, 0);
+
+        // 计算剩余天数，使用 Math.floor 而不是 Math.ceil
+        daysRemaining = Math.floor((expirationDate - today) / (1000 * 60 * 60 * 24));
+
+        if (info.registrationDate !== 'Unknown') {
+          const registrationDate = new Date(info.registrationDate);
+          registrationDate.setHours(0, 0, 0, 0);
+
+          // 计算总天数
+          totalDays = Math.floor((expirationDate - registrationDate) / (1000 * 60 * 60 * 24));
+
+          // 计算进度百分比
+          if (totalDays > 0) {
+            const elapsedDays = Math.floor((today - registrationDate) / (1000 * 60 * 60 * 24));
+            progressPercentage = (elapsedDays / totalDays) * 100;
+            // 确保进度百分比在 0-100 之间
+            progressPercentage = Math.max(0, Math.min(100, progressPercentage));
+          }
+        }
+      }
       const whoisErrorMessage = info.whoisError
         ? `<br><span style="color: red;">WHOIS错误: ${info.whoisError}</span><br><span style="color: blue;">建议：请检查域名状态或API配置</span>`
         : '';
@@ -1855,47 +1899,163 @@ function generateHTML(domains, isAdmin) {
       function showNotification(message, type = 'success') {
         const notification = document.createElement('div');
         notification.className = \`notification \${type}\`;
-        notification.textContent = message;
+        notification.innerHTML = \`
+          <div class="notification-icon">
+            \${type === 'success' ? '✓' : '✕'}
+          </div>
+          <div class="notification-content">
+            <div class="notification-message">\${message}</div>
+            <div class="notification-progress"></div>
+          </div>
+          <button class="notification-close">×</button>
+        \`;
         
         // 添加样式
         notification.style.cssText = \`
           position: fixed;
           top: 20px;
           right: 20px;
-          padding: 15px 25px;
-          border-radius: 4px;
+          padding: 12px;
+          border-radius: 8px;
           color: white;
           background-color: \${type === 'success' ? '#4CAF50' : '#f44336'};
+          box-shadow: 0 4px 12px rgba(0,0,0,0.15);
           z-index: 1000;
-          animation: fadeIn 0.3s ease-in;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          min-width: 300px;
+          max-width: 450px;
+          animation: slideIn 0.3s ease-out;
+          backdrop-filter: blur(8px);
         \`;
+    
+        // 添加关闭按钮事件
+        const closeBtn = notification.querySelector('.notification-close');
+        if (closeBtn) {
+          closeBtn.addEventListener('click', () => {
+            notification.style.animation = 'slideOut 0.3s ease-out';
+            setTimeout(() => notification.remove(), 300);
+          });
+        }
+
+        // 添加进度条动画
+        const progress = notification.querySelector('.notification-progress');
+        if (progress) {
+          progress.style.cssText = \`
+            width: 100%;
+            height: 3px;
+            background: rgba(255,255,255,0.3);
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            border-radius: 0 0 8px 8px;
+          \`;
+
+          // 创建进度条动画
+          const progressBar = document.createElement('div');
+          progressBar.style.cssText = \`
+            height: 100%;
+            background: rgba(255,255,255,0.8);
+            width: 100%;
+            border-radius: inherit;
+            animation: progress 3s linear;
+          \`;
+          progress.appendChild(progressBar);
+        }
     
         document.body.appendChild(notification);
     
         // 自动移除通知
         setTimeout(() => {
-          notification.style.animation = 'fadeOut 0.5s ease-out';
-          setTimeout(() => notification.remove(), 500);
+          notification.style.animation = 'slideOut 0.3s ease-out';
+          setTimeout(() => notification.remove(), 300);
         }, 3000);
       }
     
       // 添加必要的样式
       const style = document.createElement('style');
       style.textContent = \`
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(-20px); }
-          to { opacity: 1; transform: translateY(0); }
+        @keyframes slideIn {
+          from { 
+            opacity: 0;
+            transform: translateX(100%);
+          }
+          to {
+            opacity: 1;
+            transform: translateX(0);
+          }
         }
-        @keyframes fadeOut {
-          from { opacity: 1; transform: translateY(0); }
-          to { opacity: 0; transform: translateY(-20px); }
+
+        @keyframes slideOut {
+          from {
+            opacity: 1;
+            transform: translateX(0);
+          }
+          to {
+            opacity: 0;
+            transform: translateX(100%);
+          }
         }
+
+        @keyframes progress {
+          from { width: 100%; }
+          to { width: 0%; }
+        }
+
+        .notification {
+          transition: all 0.3s ease;
+        }
+
+        .notification:hover {
+          transform: translateY(-3px);
+          box-shadow: 0 6px 16px rgba(0,0,0,0.2);
+        }
+
+        .notification-icon {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 24px;
+          height: 24px;
+          border-radius: 50%;
+          background: rgba(255,255,255,0.2);
+          font-size: 14px;
+        }
+
+        .notification-content {
+          flex: 1;
+          position: relative;
+        }
+
+        .notification-message {
+          margin-bottom: 6px;
+          font-size: 14px;
+          line-height: 1.4;
+        }
+
+        .notification-close {
+          background: none;
+          border: none;
+          color: white;
+          font-size: 18px;
+          cursor: pointer;
+          opacity: 0.7;
+          transition: opacity 0.2s;
+          padding: 0 4px;
+        }
+
+        .notification-close:hover {
+          opacity: 1;
+        }
+
         #addCustomDomainForm input {
           margin: 5px;
           padding: 8px;
           border: 1px solid #ddd;
           border-radius: 4px;
         }
+
         #addCustomDomainForm button {
           margin: 5px;
           padding: 8px 16px;
@@ -1904,10 +2064,18 @@ function generateHTML(domains, isAdmin) {
           border: none;
           border-radius: 4px;
           cursor: pointer;
+          transition: all 0.3s ease;
         }
+
+        #addCustomDomainForm button:hover {
+          background-color: #45a049;
+          transform: translateY(-1px);
+        }
+
         #addCustomDomainForm button:disabled {
           background-color: #cccccc;
           cursor: not-allowed;
+          transform: none;
         }
       \`;
       document.head.appendChild(style);
