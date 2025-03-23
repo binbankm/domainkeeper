@@ -19,9 +19,6 @@ const CONFIG = {
   // 存储配置
   KV_NAMESPACE: DOMAIN_INFO,
 
-  // 缓存配置
-  CACHE_TTL: null, // 7天缓存过期时间(秒)
-
   // 状态配置
   STATUS: {
     UNKNOWN: { color: '#808080', title: '未知状态' },
@@ -29,6 +26,25 @@ const CONFIG = {
     WARNING: { color: '#ffa500', title: '警告', days: 30 },
     NOTICE: { color: '#ffff00', title: '注意', days: 90 },
     NORMAL: { color: '#00ff00', title: '正常' }
+  },
+
+  // HTTP响应头
+  HEADERS: {
+    JSON: { 'Content-Type': 'application/json' },
+    HTML: { 'Content-Type': 'text/html' },
+    PLAIN: { 'Content-Type': 'text/plain' }
+  },
+
+  // 缓存配置
+  CACHE: {
+    WHOIS_TTL: 3600, // WHOIS缓存时间（秒）
+    KV_TTL: 315576000 // KV存储过期时间（10年）
+  },
+
+  // API请求配置
+  API: {
+    TIMEOUT: 10000, // 请求超时时间（毫秒）
+    MAX_RETRIES: 3 // 最大重试次数
   }
 };
 
@@ -61,6 +77,24 @@ addEventListener('fetch', event => {
  * @param {Request} request - 请求对象
  * @returns {Promise<Response>} - 响应对象
  */
+// 通用响应处理函数
+function createResponse(data, status = 200, headers = CONFIG.HEADERS.JSON) {
+  return new Response(
+    typeof data === 'string' ? data : JSON.stringify(data),
+    { status, headers }
+  );
+}
+
+// 错误响应处理函数
+function createErrorResponse(message, status = 500) {
+  console.error(`Error: ${message}`);
+  return createResponse(
+    { success: false, error: message },
+    status,
+    CONFIG.HEADERS.JSON
+  );
+}
+
 async function handleRequest(request) {
   try {
     // 清理KV中的错误内容
@@ -90,16 +124,9 @@ async function handleRequest(request) {
     }
 
     // 未找到匹配路由
-    return new Response("Not Found", {
-      status: 404,
-      headers: { 'Content-Type': 'text/plain' }
-    });
+    return createResponse("Not Found", 404, CONFIG.HEADERS.PLAIN);
   } catch (error) {
-    console.error("Request handling error:", error);
-    return new Response(`Server Error: ${error.message}`, {
-      status: 500,
-      headers: { 'Content-Type': 'text/plain' }
-    });
+    return createErrorResponse(error.message);
   }
 }
 async function cleanupKV() {
@@ -208,78 +235,62 @@ async function handleAdmin(request) {
  * @param {Request} request - 请求对象
  * @returns {Promise<Response>} - 响应对象
  */
-async function handleLogin(request) {
+// 通用认证检查函数
+function checkAuth(request, isAdmin = false) {
+  const cookie = request.headers.get("Cookie");
+  const requiredPassword = isAdmin ? CONFIG.ADMIN_PASSWORD : CONFIG.ACCESS_PASSWORD;
+  const tokenName = isAdmin ? 'admin_token' : 'access_token';
+  
+  return cookie && cookie.includes(`${tokenName}=${requiredPassword}`);
+}
+
+// 通用登录处理函数
+async function handleLogin(request, isAdmin = false) {
+  const loginType = isAdmin ? "后台登录" : "前台登录";
+  const loginPath = isAdmin ? "/admin-login" : "/login";
+  const redirectPath = isAdmin ? "/admin" : "/";
+  const password = isAdmin ? CONFIG.ADMIN_PASSWORD : CONFIG.ACCESS_PASSWORD;
+  const tokenName = isAdmin ? 'admin_token' : 'access_token';
+
   try {
     if (request.method === "POST") {
       const formData = await request.formData();
-      const password = formData.get("password");
+      const inputPassword = formData.get("password");
 
-      if (password === CONFIG.ACCESS_PASSWORD) {
-        return new Response("Login successful", {
-          status: 302,
-          headers: {
-            "Location": "/",
-            "Set-Cookie": `access_token=${CONFIG.ACCESS_PASSWORD}; HttpOnly; Path=/; SameSite=Strict; Max-Age=86400`
-          }
+      if (inputPassword === password) {
+        return createResponse("Login successful", 302, {
+          "Location": redirectPath,
+          "Set-Cookie": `${tokenName}=${password}; HttpOnly; Path=/; SameSite=Strict; Max-Age=86400`,
+          ...CONFIG.HEADERS.HTML
         });
       } else {
-        return new Response(generateLoginHTML("前台登录", "/login", "密码错误，请重试。"), {
-          headers: { "Content-Type": "text/html" },
-          status: 401
-        });
+        return createResponse(
+          generateLoginHTML(loginType, loginPath, "密码错误，请重试。"),
+          401,
+          CONFIG.HEADERS.HTML
+        );
       }
     }
 
-    return new Response(generateLoginHTML("前台登录", "/login"), {
-      headers: { "Content-Type": "text/html" }
-    });
+    return createResponse(
+      generateLoginHTML(loginType, loginPath),
+      200,
+      CONFIG.HEADERS.HTML
+    );
   } catch (error) {
-    console.error("Login handling error:", error);
-    return new Response(`Login error: ${error.message}`, {
-      status: 500,
-      headers: { 'Content-Type': 'text/plain' }
-    });
+    console.error(`${loginType}处理错误:`, error);
+    return createErrorResponse(`${loginType}错误: ${error.message}`);
   }
 }
 
+// 前台登录处理
+async function handleFrontendLogin(request) {
+  return handleLogin(request, false);
+}
 
-/**
- * 处理后台登录请求
- * @param {Request} request - 请求对象
- * @returns {Promise<Response>} - 响应对象
- */
+// 后台登录处理
 async function handleAdminLogin(request) {
-  try {
-    if (request.method === "POST") {
-      const formData = await request.formData();
-      const password = formData.get("password");
-
-      if (password === CONFIG.ADMIN_PASSWORD) {
-        return new Response("Admin login successful", {
-          status: 302,
-          headers: {
-            "Location": "/admin",
-            "Set-Cookie": `admin_token=${CONFIG.ADMIN_PASSWORD}; HttpOnly; Path=/; SameSite=Strict; Max-Age=86400`
-          }
-        });
-      } else {
-        return new Response(generateLoginHTML("后台登录", "/admin-login", "密码错误，请重试。"), {
-          headers: { "Content-Type": "text/html" },
-          status: 401
-        });
-      }
-    }
-
-    return new Response(generateLoginHTML("后台登录", "/admin-login"), {
-      headers: { "Content-Type": "text/html" }
-    });
-  } catch (error) {
-    console.error("Admin login handling error:", error);
-    return new Response(`Admin login error: ${error.message}`, {
-      status: 500,
-      headers: { 'Content-Type': 'text/plain' }
-    });
-  }
+  return handleLogin(request, true);
 }
 
 
@@ -289,104 +300,108 @@ async function handleAdminLogin(request) {
  * @param {Request} request - 请求对象
  * @returns {Promise<Response>} - 响应对象
  */
+// API请求验证函数
+function validateApiRequest(request, requiredFields = []) {
+  // 验证请求方法
+  if (request.method !== "POST") {
+    throw new Error("Method Not Allowed");
+  }
+
+  // 验证身份认证
+  const auth = request.headers.get("Authorization");
+  if (!auth || auth !== `Basic ${btoa(`:${CONFIG.ADMIN_PASSWORD}`)}`) {
+    throw new Error("Unauthorized");
+  }
+
+  return true;
+}
+
+// 域名操作处理函数
+const DomainOperations = {
+  async delete(domain) {
+    const domainInfo = await getCachedWhoisInfo(domain);
+    if (domainInfo && domainInfo.isCustom) {
+      await KV_NAMESPACE.delete(`whois_${domain}`);
+      console.log(`Deleted custom domain: ${domain}`);
+      return true;
+    }
+    console.log(`Attempted to delete non-custom domain: ${domain}`);
+    return false;
+  },
+
+  async updateWhois(domain) {
+    const whoisInfo = await fetchWhoisInfo(domain);
+    await cacheWhoisInfo(domain, whoisInfo);
+    return true;
+  },
+
+  async add(data) {
+    const { domain, system, registrar, registrationDate, expirationDate } = data;
+    if (!system || !registrar || !registrationDate || !expirationDate) {
+      throw new Error("Missing required fields for domain addition");
+    }
+
+    const newDomainInfo = {
+      domain,
+      system,
+      registrar,
+      registrationDate,
+      expirationDate,
+      isCustom: true
+    };
+    await cacheWhoisInfo(domain, newDomainInfo);
+    return true;
+  },
+
+  async update(data) {
+    const { domain, registrar, registrationDate, expirationDate } = data;
+    let domainInfo = await getCachedWhoisInfo(domain) || {};
+    const isCustom = domainInfo.isCustom || false;
+
+    domainInfo = {
+      ...domainInfo,
+      registrar: registrar || domainInfo.registrar,
+      registrationDate: registrationDate || domainInfo.registrationDate,
+      expirationDate: expirationDate || domainInfo.expirationDate,
+      isCustom
+    };
+    await cacheWhoisInfo(domain, domainInfo);
+    return true;
+  }
+};
+
 async function handleApiUpdate(request) {
   try {
-    // 验证请求方法
-    if (request.method !== "POST") {
-      return new Response(JSON.stringify({ success: false, error: "Method Not Allowed" }), {
-        status: 405,
-        headers: { 'Content-Type': 'application/json' }
-      });
-    }
-
-    // 验证身份认证
-    const auth = request.headers.get("Authorization");
-    if (!auth || auth !== `Basic ${btoa(`:${CONFIG.ADMIN_PASSWORD}`)}`) {
-      return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), {
-        status: 401,
-        headers: { 'Content-Type': 'application/json' }
-      });
-    }
-
-    // 解析请求数据
+    validateApiRequest(request);
     const data = await request.json();
-    const { action, domain, system, registrar, registrationDate, expirationDate } = data;
+    const { action, domain } = data;
 
-    // 验证必要参数
     if (!domain) {
-      return new Response(JSON.stringify({ success: false, error: "Domain is required" }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return createErrorResponse("Domain is required", 400);
     }
 
-    // 根据操作类型处理请求
+    let success = false;
     switch (action) {
       case 'delete':
-        // 删除自定义域名前进行确认
-        const domainToDelete = await getCachedWhoisInfo(domain);
-        if (domainToDelete && domainToDelete.isCustom) {
-          await KV_NAMESPACE.delete(`whois_${domain}`);
-          console.log(`Deleted custom domain: ${domain}`);
-        } else {
-          console.log(`Attempted to delete non-custom domain: ${domain}`);
-        }
+        success = await DomainOperations.delete(domain);
         break;
-
       case 'update-whois':
-        // 更新 WHOIS 信息
-        const whoisInfo = await fetchWhoisInfo(domain);
-        await cacheWhoisInfo(domain, whoisInfo);
+        success = await DomainOperations.updateWhois(domain);
         break;
-
       case 'add':
-        // 验证添加域名所需的参数
-        if (!system || !registrar || !registrationDate || !expirationDate) {
-          return new Response(JSON.stringify({
-            success: false,
-            error: "Missing required fields for domain addition"
-          }), {
-            status: 400,
-            headers: { 'Content-Type': 'application/json' }
-          });
-        }
-
-        // 添加新域名
-        const newDomainInfo = {
-          domain,
-          system,
-          registrar,
-          registrationDate,
-          expirationDate,
-          isCustom: true
-        };
-        await cacheWhoisInfo(domain, newDomainInfo);
+        success = await DomainOperations.add(data);
         break;
-
       default:
-        // 更新域名信息
-        let domainInfo = await getCachedWhoisInfo(domain) || {};
-        const isCustom = domainInfo.isCustom || false; // 保留现有的 isCustom 状态，默认为 false
-        domainInfo = {
-          ...domainInfo,
-          registrar: registrar || domainInfo.registrar,
-          registrationDate: registrationDate || domainInfo.registrationDate,
-          expirationDate: expirationDate || domainInfo.expirationDate,
-          isCustom: isCustom // 恢复 isCustom 状态
-        };
-        await cacheWhoisInfo(domain, domainInfo);
+        success = await DomainOperations.update(data);
     }
 
-    return new Response(JSON.stringify({ success: true }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return createResponse({ success });
   } catch (error) {
     console.error('Error in handleApiUpdate:', error);
-    return new Response(JSON.stringify({ success: false, error: error.message }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return createErrorResponse(error.message, 
+      error.message === "Unauthorized" ? 401 :
+      error.message === "Method Not Allowed" ? 405 : 500
+    );
   }
 }
 
@@ -523,57 +538,57 @@ async function fetchDomainInfo(domains) {
  * @param {string} domain - 要查询的域名
  * @returns {Promise<Response>} - 响应对象
  */
+// 通用WHOIS请求处理函数
 async function handleWhoisRequest(domain) {
   try {
     if (!domain) {
-      throw new Error('Domain parameter is required');
+      return createErrorResponse('Domain parameter is required', 400);
     }
 
     console.log(`Handling WHOIS request for domain: ${domain}`);
 
-    // 构建WHOIS API请求URL
-    const whoisUrl = `${CONFIG.WHOIS_PROXY_URL}/whois/${domain}`;
-    console.log(`Fetching WHOIS data from: ${whoisUrl}`);
+    const whoisData = await fetchWhoisDataWithTimeout(domain);
+    
+    return createResponse({
+      error: false,
+      rawData: whoisData.rawData
+    }, 200, {
+      ...CONFIG.HEADERS.JSON,
+      'Cache-Control': `public, max-age=${CONFIG.CACHE.WHOIS_TTL}`
+    });
+  } catch (error) {
+    console.error(`Error fetching WHOIS data for ${domain}:`, error);
+    return createResponse({
+      error: true,
+      message: `Failed to fetch WHOIS data for ${domain}. Error: ${error.message}`
+    }, 200, CONFIG.HEADERS.JSON);
+  }
+}
 
-    // 发送请求并设置超时
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10秒超时
+// WHOIS数据获取函数
+async function fetchWhoisDataWithTimeout(domain) {
+  const whoisUrl = `${CONFIG.WHOIS_PROXY_URL}/whois/${domain}`;
+  console.log(`Fetching WHOIS data from: ${whoisUrl}`);
 
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), CONFIG.API.TIMEOUT);
+
+  try {
     const response = await fetch(whoisUrl, {
       signal: controller.signal,
       cf: {
-        cacheTtl: 3600, // 1小时缓存
+        cacheTtl: CONFIG.CACHE.WHOIS_TTL,
         cacheEverything: true
       }
-    }).finally(() => clearTimeout(timeoutId));
+    });
 
     if (!response.ok) {
       throw new Error(`WHOIS API responded with status: ${response.status} ${response.statusText}`);
     }
 
-    const whoisData = await response.json();
-
-    // 返回成功响应
-    return new Response(JSON.stringify({
-      error: false,
-      rawData: whoisData.rawData
-    }), {
-      headers: {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'public, max-age=3600'
-      }
-    });
-  } catch (error) {
-    console.error(`Error fetching WHOIS data for ${domain}:`, error);
-
-    // 返回错误响应，但保持200状态码以便前端处理
-    return new Response(JSON.stringify({
-      error: true,
-      message: `Failed to fetch WHOIS data for ${domain}. Error: ${error.message}`
-    }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return await response.json();
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
@@ -819,8 +834,8 @@ function generateLoginHTML(title, action, errorMessage = "") {
      <style>
       /* 统一的颜色变量 - 使用RGB格式便于透明度调整 */
       :root {
-        --primary-color: #4CAF50;
-        --primary-color-rgb: 76, 175, 80;
+        --primary-color: #333333;
+        --primary-color-rgb: 51, 51, 51;
         --error-color: #f44336;
         --error-color-rgb: 244, 67, 54;
         --success-color: #43a047;
@@ -841,8 +856,8 @@ function generateLoginHTML(title, action, errorMessage = "") {
 
       /* 暗黑模式下的颜色变量 */
       .dark-mode {
-        --primary-color: #81c995;
-        --primary-color-rgb: 129, 201, 149;
+        --primary-color: #666666;
+        --primary-color-rgb: 102, 102, 102;
         --card-bg: rgba(45, 45, 45, 0.95);
         --text-color: #ffffff;
         --text-color-secondary: #bbbbbb;
@@ -939,6 +954,8 @@ function generateLoginHTML(title, action, errorMessage = "") {
         height: 100%;
         z-index: 1;
         pointer-events: none;
+        overflow: hidden;
+        opacity: 0.8;
       }
 
       .shape {
@@ -986,33 +1003,24 @@ function generateLoginHTML(title, action, errorMessage = "") {
       /* 登录容器 - 增强视觉效果和性能 */
       .login-container {
         background: var(--card-bg);
-        padding: 2.5rem;
-        border-radius: 20px;
+        padding: 3rem;
+        border-radius: 24px;
         box-shadow: var(--box-shadow);
         width: 100%;
-        max-width: 400px;
+        max-width: 420px;
         margin: 1rem;
         position: relative;
         z-index: 2;
-        backdrop-filter: blur(10px);
-        border: 1px solid rgba(255, 255, 255, 0.2);
+        backdrop-filter: blur(15px);
+        border: 1px solid rgba(255, 255, 255, 0.25);
         transform: translateZ(0);
         will-change: transform, opacity;
-        animation: fadeIn 0.5s ease-out;
+        animation: fadeIn 0.6s ease-out;
         transition: var(--transition);
+        overflow: hidden;
       }
       
-      /* 登录容器顶部装饰条 */
-      .login-container::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: 5px;
-        background: var(--primary-color);
-        border-radius: 20px 20px 0 0;
-      }
+
       
       /* 暗黑模式切换按钮 */
       .mode-toggle {
@@ -1055,10 +1063,25 @@ function generateLoginHTML(title, action, errorMessage = "") {
       h1 {
         text-align: center;
         color: var(--text-color);
-        margin-bottom: 1.5rem;
-        font-size: 1.8rem;
-        font-weight: 600;
+        margin-bottom: 2rem;
+        font-size: 2rem;
+        font-weight: 700;
         transition: var(--transition);
+        letter-spacing: 0.5px;
+        position: relative;
+        padding-bottom: 1rem;
+      }
+
+      h1::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 60px;
+        height: 4px;
+        background: var(--primary-color);
+        border-radius: 2px;
       }
 
       /* 表单 */
@@ -1070,43 +1093,45 @@ function generateLoginHTML(title, action, errorMessage = "") {
 
       /* 输入框 - 增强可访问性 */
       input {
-        padding: 1rem;
-        border: 2px solid var(--input-border);
-        border-radius: 12px;
-        font-size: 1rem;
+        padding: 1.2rem;
+        border: none;
+        border-radius: 16px;
+        font-size: 1.1rem;
         transition: var(--transition);
         background: var(--input-bg);
         color: var(--text-color);
         width: 100%;
         box-sizing: border-box;
+        letter-spacing: 0.5px;
       }
 
       input:focus {
         outline: none;
-        border-color: var(--primary-color);
-        box-shadow: var(--focus-shadow);
+        border: 1px solid var(--border-color);
         transform: translateY(-2px);
       }
       
       /* 键盘焦点样式 */
       input:focus-visible {
-        outline: 2px solid var(--primary-color);
-        outline-offset: 1px;
+        outline: none;
       }
 
       /* 提交按钮 - 增强视觉反馈 */
       input[type="submit"] {
-        background: var(--button-bg);
+        background: linear-gradient(135deg, var(--button-bg), var(--button-hover-bg));
         color: var(--button-text);
         border: none;
-        padding: 1rem;
+        padding: 1.2rem;
         font-weight: 600;
+        font-size: 1.1rem;
         cursor: pointer;
         transition: var(--transition);
-        border-radius: 12px;
+        border-radius: 16px;
         position: relative;
         overflow: hidden;
         will-change: transform;
+        letter-spacing: 1px;
+        text-transform: uppercase;
       }
 
       input[type="submit"]::before {
@@ -1143,14 +1168,16 @@ function generateLoginHTML(title, action, errorMessage = "") {
       .error-message {
         color: var(--error-color);
         background: rgba(var(--error-color-rgb), 0.1);
-        padding: 1rem;
-        border-radius: 12px;
+        padding: 1.2rem;
+        border-radius: 16px;
         text-align: center;
-        margin-bottom: 1rem;
+        margin-bottom: 1.5rem;
         border: 1px solid rgba(var(--error-color-rgb), 0.2);
-        backdrop-filter: blur(5px);
+        backdrop-filter: blur(8px);
         animation: shake 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
         transform: translateZ(0);
+        font-weight: 500;
+        box-shadow: 0 4px 12px rgba(var(--error-color-rgb), 0.1);
       }
       
       @keyframes shake {
@@ -1260,6 +1287,53 @@ function generateLoginHTML(title, action, errorMessage = "") {
 }
 
 
+// 域名状态计算工具函数
+const DomainUtils = {
+  // 计算日期差异（天数）
+  calculateDateDiff(date1, date2) {
+    if (!date1 || !date2) return null;
+    const d1 = new Date(date1);
+    const d2 = new Date(date2);
+    d1.setHours(0, 0, 0, 0);
+    d2.setHours(0, 0, 0, 0);
+    return Math.floor((d2 - d1) / (1000 * 60 * 60 * 24));
+  },
+
+  // 计算域名状态信息
+  calculateDomainStatus(info) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const status = {
+      daysRemaining: 'N/A',
+      totalDays: 'N/A',
+      progressPercentage: 0
+    };
+
+    if (info.expirationDate !== 'Unknown') {
+      status.daysRemaining = this.calculateDateDiff(today, info.expirationDate);
+
+      if (info.registrationDate !== 'Unknown') {
+        status.totalDays = this.calculateDateDiff(
+          new Date(info.registrationDate),
+          new Date(info.expirationDate)
+        );
+
+        if (status.totalDays > 0) {
+          const elapsedDays = this.calculateDateDiff(
+            new Date(info.registrationDate),
+            today
+          );
+          status.progressPercentage = (elapsedDays / status.totalDays) * 100;
+          status.progressPercentage = Math.max(0, Math.min(100, status.progressPercentage));
+        }
+      }
+    }
+
+    return status;
+  }
+};
+
 function generateHTML(domains, isAdmin) {
   const categorizedDomains = categorizeDomains(domains);
 
@@ -1270,37 +1344,8 @@ function generateHTML(domains, isAdmin) {
       return '';
     }
     return domainList.map(info => {
-      // 改进日期计算逻辑
-      const today = new Date();
-      today.setHours(0, 0, 0, 0); // 设置时间为当天的开始
-
-      let daysRemaining = 'N/A';
-      let totalDays = 'N/A';
-      let progressPercentage = 0;
-
-      if (info.expirationDate !== 'Unknown') {
-        const expirationDate = new Date(info.expirationDate);
-        expirationDate.setHours(0, 0, 0, 0);
-
-        // 计算剩余天数，使用 Math.floor 而不是 Math.ceil
-        daysRemaining = Math.floor((expirationDate - today) / (1000 * 60 * 60 * 24));
-
-        if (info.registrationDate !== 'Unknown') {
-          const registrationDate = new Date(info.registrationDate);
-          registrationDate.setHours(0, 0, 0, 0);
-
-          // 计算总天数
-          totalDays = Math.floor((expirationDate - registrationDate) / (1000 * 60 * 60 * 24));
-
-          // 计算进度百分比
-          if (totalDays > 0) {
-            const elapsedDays = Math.floor((today - registrationDate) / (1000 * 60 * 60 * 24));
-            progressPercentage = (elapsedDays / totalDays) * 100;
-            // 确保进度百分比在 0-100 之间
-            progressPercentage = Math.max(0, Math.min(100, progressPercentage));
-          }
-        }
-      }
+      const status = DomainUtils.calculateDomainStatus(info);
+      const { daysRemaining, totalDays, progressPercentage } = status;
       const whoisErrorMessage = info.whoisError
         ? `<br><span style="color: red;">WHOIS错误: ${info.whoisError}</span><br><span style="color: blue;">建议：请检查域名状态或API配置</span>`
         : '';
@@ -1357,53 +1402,185 @@ function generateHTML(domains, isAdmin) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${CONFIG.CUSTOM_TITLE}${isAdmin ? ' - 后台管理' : ''}</title>
   <style>
+    /* 主题切换按钮 */
+.theme-switch {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--primary-gradient);
+  border: none;
+  color: white;
+  font-size: 20px;
+  cursor: pointer;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: var(--transition);
+  box-shadow: var(--box-shadow);
+}
+
+.theme-switch:hover {
+  transform: rotate(180deg);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+}
+
+/* 主题切换动画 */
+.theme-transition {
+  transition: background-color 0.5s ease;
+}
+
+.rotate-icon {
+  animation: rotate 0.5s ease-in-out;
+}
+
+@keyframes rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* 通知组件样式 */
+.notification {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 12px;
+  color: white;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  backdrop-filter: blur(8px);
+  max-width: 450px;
+  margin: 10px;
+}
+
+.notification-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.notification-content {
+  flex: 1;
+  position: relative;
+}
+
+.notification-message {
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+.notification-close {
+  background: none;
+  border: none;
+  color: white;
+  cursor: pointer;
+  opacity: 0.8;
+  transition: opacity 0.3s;
+  padding: 0;
+  font-size: 20px;
+}
+
+.notification-close:hover {
+  opacity: 1;
+}
+
+.notification.success {
+  background: linear-gradient(135deg, #43a047, #66bb6a);
+}
+
+.notification.error {
+  background: linear-gradient(135deg, #e53935, #ef5350);
+}
+
+/* 页面标题样式 */
+h1 {
+  font-size: 2rem;
+  font-weight: 600;
+  margin-bottom: 1.5rem;
+  background: var(--primary-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-align: center;
+}
+
+/* 管理链接样式 */
+.admin-link {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.admin-link a {
+  color: var(--primary-color);
+  text-decoration: none;
+  font-weight: 500;
+  transition: var(--transition);
+}
+
+.admin-link a:hover {
+  opacity: 0.8;
+  text-decoration: underline;
+}
+
     /* 统一的颜色变量 */
     :root {
       --primary-color: #4CAF50;
+      --primary-gradient: linear-gradient(135deg, #43a047, #66bb6a);
       --text-color: #333;
       --table-bg: #fff;
-      --table-border: #ddd;
-      --header-bg: #f2f2f2;
-      --hover-bg: #f5f5f5;
-      --progress-bg: #e0e0e0;
-      --button-bg: #fff;
-      --button-text: #333;
+      --table-border: #e0e0e0;
+      --header-bg: #f5f5f5;
+      --hover-bg: rgba(76, 175, 80, 0.05);
+      --progress-bg: #e8f5e9;
+      --button-bg: var(--primary-gradient);
+      --button-text: #fff;
       --input-bg: #fff;
       --input-text: #333;
+      --box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     }
 
     /* 暗黑模式样式 */
     [data-theme="dark"] {
-      --bg-color: #1a1a1a;
+      --bg-color: #121212;
       --text-color: #e0e0e0;
-      --table-bg: #2d2d2d;
-      --table-border: #404040;
-      --header-bg: #333;
-      --hover-bg: #404040;
-      --progress-bg: #404040;
-      --button-bg: #4a4a4a;
+      --table-bg: #1e1e1e;
+      --table-border: #333;
+      --header-bg: #252525;
+      --hover-bg: rgba(76, 175, 80, 0.1);
+      --progress-bg: #2e2e2e;
+      --button-bg: var(--primary-gradient);
       --button-text: #fff;
-      --input-bg: #333;
-      --input-text: #fff;
+      --input-bg: #252525;
+      --input-text: #e0e0e0;
+      --box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     }
 
     /* 页面通用样式 */
     body {
-      font-family: Arial, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       line-height: 1.6;
       margin: 0;
       padding: 20px;
       background-color: var(--bg-color);
       color: var(--text-color);
-      transition: background-color 0.3s, color 0.3s;
+      transition: var(--transition);
     }
 
     /* 容器 */
     .container {
+      max-width: 1200px;
       margin: 0 auto;
-      padding: 0 15px;
-      padding-bottom: 60px; /* 根据页脚高度调整 */
+      padding: 20px;
       background-color: var(--table-bg);
+      border-radius: 12px;
+      box-shadow: var(--box-shadow);
     }
 
     /* 页脚 */
@@ -1422,51 +1599,98 @@ function generateHTML(domains, isAdmin) {
       overflow-x: auto;
     }
 
+    /* 表格基础样式 */
+    table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      margin-bottom: 1rem;
+      background: var(--table-bg);
+      border-radius: 8px;
+      overflow: hidden;
+      transition: var(--transition);
+    }
+
+    /* 表格行样式 */
+    tr {
+      transition: var(--transition);
+      position: relative;
+    }
+
+    /* 表格行悬停效果 */
+    tr:hover {
+      background-color: var(--hover-bg);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      z-index: 1;
+    }
+
+    /* 表格单元格样式 */
+    td, th {
+      padding: 1rem;
+      text-align: left;
+      border-bottom: 1px solid var(--table-border);
+      transition: var(--transition);
+    }
+
+    /* 表头样式 */
+    thead tr {
+      background-color: var(--header-bg);
+      font-weight: 600;
+    }
+
+    /* 表格最后一行去除底部边框 */
+    tr:last-child td {
+      border-bottom: none;
+    }
+
     /* 表格标题 */
     h2.table-title {
       font-size: 1.5em;
       margin-top: 30px;
       margin-bottom: 15px;
       padding-bottom: 10px;
-      border-bottom: 2px solid #ddd;
+      border-bottom: 2px solid var(--table-border);
     }
 
     /* 分割线 */
     .table-separator {
       height: 2px;
-      background-color: #eee;
+      background-color: var(--table-border);
       margin: 30px 0;
     }
 
     /* 表格 */
     table {
       width: 100%;
-      border-collapse: collapse;
+      border-collapse: separate;
+      border-spacing: 0;
       margin-bottom: 20px;
-      table-layout: auto;
-      background-color: var(--table-bg);
-      border-color: var(--table-border);
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: var(--box-shadow);
     }
 
     /* 表格头部和单元格 */
     th, td {
-      padding: 8px;
+      padding: 12px 16px;
       text-align: left;
-      border-bottom: 1px solid #ddd;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      border-bottom: 1px solid var(--table-border);
     }
 
     /* 表格头部 */
     th {
-      background-color: var(--header-bg);
-      font-weight: bold;
+      background: var(--header-bg);
+      font-weight: 600;
+      text-transform: uppercase;
+      font-size: 0.85rem;
+      letter-spacing: 0.5px;
     }
 
     /* 表格行悬停效果 */
     tr:hover {
       background-color: var(--hover-bg);
+      transition: var(--transition);
     }
 
     /* 状态列 */
@@ -1594,10 +1818,6 @@ function generateHTML(domains, isAdmin) {
       button {
         padding: 3px 6px;
         font-size: 12px;
-      }
-
-      .less-important-column {
-        display: none;
       }
     }
   </style>
