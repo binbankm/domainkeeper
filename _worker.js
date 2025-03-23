@@ -834,8 +834,8 @@ function generateLoginHTML(title, action, errorMessage = "") {
      <style>
       /* 统一的颜色变量 - 使用RGB格式便于透明度调整 */
       :root {
-        --primary-color: #333333;
-        --primary-color-rgb: 51, 51, 51;
+        --primary-color: #4CAF50;
+        --primary-color-rgb: 76, 175, 80;
         --error-color: #f44336;
         --error-color-rgb: 244, 67, 54;
         --success-color: #43a047;
@@ -856,17 +856,17 @@ function generateLoginHTML(title, action, errorMessage = "") {
 
       /* 暗黑模式下的颜色变量 */
       .dark-mode {
-        --primary-color: #666666;
-        --primary-color-rgb: 102, 102, 102;
-        --card-bg: rgba(45, 45, 45, 0.95);
+        --primary-color: #81c995;
+        --primary-color-rgb: 129, 201, 149;
+        --card-bg: rgba(33, 33, 33, 0.95);
         --text-color: #ffffff;
         --text-color-secondary: #bbbbbb;
         --border-color: #404040;
         --input-bg: rgba(255, 255, 255, 0.1);
         --input-border: #404040;
-        --button-bg: #333333;
+        --button-bg: #81c995;
         --button-text: #ffffff;
-        --button-hover-bg: #555555;
+        --button-hover-bg: #43a047;
         --focus-shadow: 0 0 0 3px rgba(var(--primary-color-rgb), 0.3);
         --box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
       }
@@ -876,15 +876,15 @@ function generateLoginHTML(title, action, errorMessage = "") {
         .light-mode:not(.dark-mode-override) {
           --primary-color: #81c995;
           --primary-color-rgb: 129, 201, 149;
-          --card-bg: rgba(45, 45, 45, 0.95);
+          --card-bg: rgba(33, 33, 33, 0.95);
           --text-color: #ffffff;
           --text-color-secondary: #bbbbbb;
           --border-color: #404040;
           --input-bg: rgba(255, 255, 255, 0.1);
           --input-border: #404040;
-          --button-bg: #333333;
+          --button-bg: #81c995;
           --button-text: #ffffff;
-          --button-hover-bg: #555555;
+          --button-hover-bg: #43a047;
           --focus-shadow: 0 0 0 3px rgba(var(--primary-color-rgb), 0.3);
           --box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
         }
