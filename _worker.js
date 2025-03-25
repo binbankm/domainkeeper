@@ -13,7 +13,7 @@ const CONFIG = {
   WHOIS_PROXY_URL: "",
 
   // 安全配置
-  ACCESS_PASSWORD: "", // 不可为空
+  ACCESS_PASSWORD: "", // 可为空
   ADMIN_PASSWORD: "", // 不可为空
 
   // 存储配置
@@ -825,7 +825,7 @@ async function cacheWhoisInfo(domain, whoisInfo) {
 function generateLoginHTML(title, action, errorMessage = "") {
   return `
   <!DOCTYPE html>
-  <html lang="zh-CN" class="light-mode">
+  <html lang="zh-CN">
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -852,42 +852,6 @@ function generateLoginHTML(title, action, errorMessage = "") {
         --focus-shadow: 0 0 0 3px rgba(var(--primary-color-rgb), 0.2);
         --box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
         --transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-      }
-
-      /* 暗黑模式下的颜色变量 */
-      .dark-mode {
-        --primary-color: #81c995;
-        --primary-color-rgb: 129, 201, 149;
-        --card-bg: rgba(33, 33, 33, 0.95);
-        --text-color: #ffffff;
-        --text-color-secondary: #bbbbbb;
-        --border-color: #404040;
-        --input-bg: rgba(255, 255, 255, 0.1);
-        --input-border: #404040;
-        --button-bg: #81c995;
-        --button-text: #ffffff;
-        --button-hover-bg: #43a047;
-        --focus-shadow: 0 0 0 3px rgba(var(--primary-color-rgb), 0.3);
-        --box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-      }
-      
-      /* 自动检测系统暗黑模式 */
-      @media (prefers-color-scheme: dark) {
-        .light-mode:not(.dark-mode-override) {
-          --primary-color: #81c995;
-          --primary-color-rgb: 129, 201, 149;
-          --card-bg: rgba(33, 33, 33, 0.95);
-          --text-color: #ffffff;
-          --text-color-secondary: #bbbbbb;
-          --border-color: #404040;
-          --input-bg: rgba(255, 255, 255, 0.1);
-          --input-border: #404040;
-          --button-bg: #81c995;
-          --button-text: #ffffff;
-          --button-hover-bg: #43a047;
-          --focus-shadow: 0 0 0 3px rgba(var(--primary-color-rgb), 0.3);
-          --box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-        }
       }
 
       /* 动画效果 - 性能优化 */
@@ -1022,42 +986,7 @@ function generateLoginHTML(title, action, errorMessage = "") {
       
 
       
-      /* 暗黑模式切换按钮 */
-      .mode-toggle {
-        position: absolute;
-        top: 15px;
-        right: 15px;
-        background: transparent;
-        border: none;
-        color: var(--text-color-secondary);
-        cursor: pointer;
-        font-size: 1.2rem;
-        padding: 5px;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        transition: var(--transition);
-        z-index: 3;
-      }
-      
-      .mode-toggle:hover {
-        background: rgba(var(--primary-color-rgb), 0.1);
-      }
-      
-      .mode-toggle:focus {
-        outline: none;
-        box-shadow: var(--focus-shadow);
-      }
-      
-      .sun-icon, .moon-icon {
-        width: 20px;
-        height: 20px;
-      }
-      
-      .moon-icon {
-        display: none;
-      }
+
 
       /* 标题 */
       h1 {
@@ -1235,10 +1164,6 @@ function generateLoginHTML(title, action, errorMessage = "") {
       <div class="shape"></div>
     </div>
     <div class="login-container">
-      <button id="modeToggle" class="mode-toggle" aria-label="切换暗黑/明亮模式">
-        <svg class="sun-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
-        <svg class="moon-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
-      </button>
       <h1>${title}</h1>
       ${errorMessage ? `<div class="error-message" role="alert">${errorMessage}</div>` : ''}
       <form method="POST" action="${action}">
@@ -1252,35 +1177,7 @@ function generateLoginHTML(title, action, errorMessage = "") {
       ${footerHTML}
     </div>
     
-    <script>
-      // 暗黑/明亮模式切换
-      const modeToggle = document.getElementById('modeToggle');
-      const html = document.documentElement;
-      const sunIcon = document.querySelector('.sun-icon');
-      const moonIcon = document.querySelector('.moon-icon');
-      
-      // 检查本地存储的模式偏好
-      const savedMode = localStorage.getItem('colorMode');
-      if (savedMode === 'dark') {
-        html.classList.add('dark-mode');
-        sunIcon.style.display = 'none';
-        moonIcon.style.display = 'block';
-      }
-      
-      modeToggle.addEventListener('click', () => {
-        html.classList.toggle('dark-mode');
-        
-        if (html.classList.contains('dark-mode')) {
-          localStorage.setItem('colorMode', 'dark');
-          sunIcon.style.display = 'none';
-          moonIcon.style.display = 'block';
-        } else {
-          localStorage.setItem('colorMode', 'light');
-          sunIcon.style.display = 'block';
-          moonIcon.style.display = 'none';
-        }
-      });
-    </script>
+
   </body>
   </html>
   `;
@@ -1368,20 +1265,20 @@ function generateHTML(domains, isAdmin) {
       }
 
       return `
-        <tr data-domain="${info.domain}">
-          <td class="status-column"><span class="status-dot" style="background-color: ${getStatusColor(daysRemaining)};" title="${getStatusTitle(daysRemaining)}"></span></td>
-          <td class="domain-column" title="${info.domain}">${info.domain}</td>
-          <td class="system-column" title="${info.system}">${info.system}</td>
-          <td class="registrar-column editable" title="${info.registrar}${whoisErrorMessage}">${info.registrar}${whoisErrorMessage}</td>
-          <td class="date-column editable" title="${info.registrationDate}">${info.registrationDate}</td>
-          <td class="date-column editable" title="${info.expirationDate}">${info.expirationDate}</td>
-          <td class="days-column" title="${daysRemaining}">${daysRemaining}</td>
-          <td class="progress-column">
-            <div class="progress-bar">
+        <tr data-domain="${info.domain}" role="row" aria-label="域名信息: ${info.domain}">
+          <td class="status-column" role="cell" aria-label="状态"><span class="status-dot" style="background-color: ${getStatusColor(daysRemaining)};" title="${getStatusTitle(daysRemaining)}" role="img" aria-label="${getStatusTitle(daysRemaining)}"></span></td>
+          <td class="domain-column" role="cell" aria-label="域名" title="${info.domain}">${info.domain}</td>
+          <td class="system-column" role="cell" aria-label="系统" title="${info.system}">${info.system}</td>
+          <td class="registrar-column editable" role="cell" aria-label="注册商" title="${info.registrar}${whoisErrorMessage}">${info.registrar}${whoisErrorMessage}</td>
+          <td class="date-column editable" role="cell" aria-label="注册日期" title="${info.registrationDate}">${info.registrationDate}</td>
+          <td class="date-column editable" role="cell" aria-label="到期日期" title="${info.expirationDate}">${info.expirationDate}</td>
+          <td class="days-column" role="cell" aria-label="剩余天数" title="${daysRemaining}">${daysRemaining}</td>
+          <td class="progress-column" role="cell" aria-label="进度">
+            <div class="progress-bar" role="progressbar" aria-valuenow="${progressPercentage}" aria-valuemin="0" aria-valuemax="100">
               <div class="progress" style="width: ${progressPercentage}%;" title="${progressPercentage.toFixed(2)}%"></div>
             </div>
           </td>
-          ${isAdmin ? `<td class="operation-column">${operationButtons}</td>` : ''}
+          ${isAdmin ? `<td class="operation-column" role="cell" aria-label="操作">${operationButtons}</td>` : ''}
         </tr>
       `;
     }).join('');
@@ -1530,8 +1427,10 @@ h1 {
 
     /* 统一的颜色变量 */
     :root {
-      --primary-color: #4CAF50;
-      --primary-gradient: linear-gradient(135deg, #43a047, #66bb6a);
+      --primary-color: #6366f1;
+      --primary-gradient: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+      --neon-effect: 0 0 15px rgba(99, 102, 241, 0.5);
+      --glass-bg: rgba(255, 255, 255, 0.08);
       --text-color: #333;
       --table-bg: #fff;
       --table-border: #e0e0e0;
@@ -1544,6 +1443,43 @@ h1 {
       --input-text: #333;
       --box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
       --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .table {
+      backdrop-filter: blur(16px) saturate(180%);
+      background: var(--glass-bg);
+      border: 1px solid rgba(99, 102, 241, 0.3);
+      box-shadow: var(--neon-effect);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .table:hover {
+      box-shadow: 0 0 25px rgba(99, 102, 241, 0.8);
+    }
+
+    .status-dot {
+      box-shadow: var(--neon-effect);
+      animation: pulse 2s infinite;
+    }
+
+    .progress {
+      background: linear-gradient(90deg, #6366f1 0%, #8b5cf6 100%);
+      box-shadow: inset 0 0 8px rgba(99, 102, 241, 0.3);
+    }
+
+    @keyframes pulse {
+      0% { opacity: 0.8; }
+      50% { opacity: 0.4; transform: scale(1.2); }
+      100% { opacity: 0.8; }
+    }
+
+    tr {
+      transition: transform 0.3s ease;
+    }
+
+    tr:hover {
+      transform: perspective(500px) rotateX(5deg);
+      background: linear-gradient(145deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.05) 100%);
     }
 
     /* 暗黑模式样式 */
@@ -1797,28 +1733,29 @@ h1 {
       padding: 10px;
     }
 
-    /* 响应式布局 */
+    /* 响应式布局优化 */
+    @media (max-width: 1024px) {
+      .container { padding: 10px; }
+      table { font-size: 14px; }
+      th, td { padding: 8px; }
+      .operation-column { width: 120px; }
+      button { padding: 4px 8px; }
+    }
+
     @media (max-width: 768px) {
-      table {
-        font-size: 12px;
-      }
+      table { font-size: 13px; }
+      .system-column { display: none; }
+      .operation-column { width: 100px; }
+      button { font-size: 12px; }
+    }
 
-      th, td {
-        padding: 6px;
-      }
-
-      .system-column, .registrar-column {
-        display: none;
-      }
-
-      .operation-column {
-        width: auto;
-      }
-
-      button {
-        padding: 3px 6px;
-        font-size: 12px;
-      }
+    @media (max-width: 480px) {
+      table { font-size: 12px; }
+      .system-column, .registrar-column { display: none; }
+      th, td { padding: 6px; }
+      .operation-column { width: auto; }
+      button { padding: 3px 6px; }
+      .progress-bar { height: 15px; }
     }
   </style>
   </head>
