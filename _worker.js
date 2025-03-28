@@ -1549,8 +1549,15 @@ h1 {
 
     /* 表格行样式 */
     tr {
-      transition: var(--transition);
+      transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
       position: relative;
+      transform-origin: center;
+      animation: tableFloat 3s ease-in-out infinite;
+    }
+
+    @keyframes tableFloat {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-5px); }
     }
 
     /* 表格行悬停效果 */
@@ -1682,7 +1689,30 @@ h1 {
       color: var(--button-text);
       border: none;
       border-radius: 4px;
-      transition: background-color 0.3s;
+      transition: all 0.3s;
+      position: relative;
+      overflow: hidden;
+    }
+
+    button::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: linear-gradient(45deg, transparent, rgba(255,255,255,0.5), transparent);
+      transform: rotate(45deg);
+      animation: shine 1.5s infinite cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    @keyframes shine {
+      0% {
+        transform: translateX(-100%) rotate(45deg);
+      }
+      100% {
+        transform: translateX(100%) rotate(45deg);
+      }
     }
 
     /* 编辑按钮 */
