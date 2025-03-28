@@ -9,12 +9,12 @@ const CONFIG = {
   VERSION: "2.1.0",
   CUSTOM_TITLE: "域名管理",
   // API配置
-  CF_API_KEY: "",
-  WHOIS_PROXY_URL: "",
+  CF_API_KEY: "A0yVNlSDEPe4vjt6FbfKPAAaTd11sO_ZIxdEuZqH",
+  WHOIS_PROXY_URL: "https://whois.lbyan.pp.ua",
 
   // 安全配置
-  ACCESS_PASSWORD: "", // 可为空
-  ADMIN_PASSWORD: "", // 不可为空
+  ACCESS_PASSWORD: "lbyan", // 可为空
+  ADMIN_PASSWORD: "lbyan", // 不可为空
 
   // 存储配置
   KV_NAMESPACE: DOMAIN_INFO,
@@ -1511,7 +1511,7 @@ h1 {
 
     /* 容器 */
     .container {
-      max-width: 1200px;
+      max-width: 1400px;
       margin: 0 auto;
       padding: 20px;
       background-color: var(--table-bg);
@@ -1744,14 +1744,12 @@ h1 {
 
     @media (max-width: 768px) {
       table { font-size: 13px; }
-      .system-column { display: none; }
       .operation-column { width: 100px; }
       button { font-size: 12px; }
     }
 
     @media (max-width: 480px) {
       table { font-size: 12px; }
-      .system-column, .registrar-column { display: none; }
       th, td { padding: 6px; }
       .operation-column { width: auto; }
       button { padding: 3px 6px; }
