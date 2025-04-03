@@ -49,9 +49,7 @@
    ```
    - 保存并部署
 
-## demo
-![image](https://github.com/ypq123456789/domainkeeper/assets/114487221/546d0a4c-a74b-436c-a42e-1b013ff6e62b)
-https://demo.bacon159.me/
+
 
 # DomainKeeper - 高级版本，集成cloudflare的域名信息获取和whois查询功能，大大提升了域名管理的效率和便捷性
 
