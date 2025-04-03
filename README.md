@@ -59,7 +59,7 @@ https://demo.bacon159.me/
 
 1. 登录您的 Cloudflare 账户
 2. 创建新的 Worker
-3. 将domainkeeper.js脚本内容复制到 Worker 编辑器
+3. 将_worker.js脚本内容复制到 Worker 编辑器
 4. 在脚本顶部配置以下变量：
    ```javascript
    const CF_API_KEY = "your_cloudflare_api_key";
