@@ -2,7 +2,7 @@
 const VERSION = "1.7.0";
 
 // 自定义标题
-const CUSTOM_TITLE = "域名管理
+const CUSTOM_TITLE = "域名管理"
 // 在这里设置你的 Cloudflare API Token
 const CF_API_KEY = "A0yVNlSDEPe4vjt6FbfKPAAaTd11sO_ZIxdEuZqH";
 
