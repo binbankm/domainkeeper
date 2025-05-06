@@ -737,19 +737,19 @@ function generateHTML(domains, isAdmin) {
       if (isAdmin) {
         if (isCFTopLevel) {
           operationButtons = `
-            <button onclick="editDomain('${info.domain}', this)">编辑</button>
-            <button onclick="deleteDomain('${info.domain}')">删除</button>
-            <button data-action="update-whois" data-domain="${info.domain}">更新WHOIS</button>
-            <button data-action="query-whois" data-domain="${info.domain}">查询WHOIS</button>
-            <button data-action="view-props" data-domain="${info.domain}">查看属性</button>
-            ${info.isCustom ? `<button data-action="reset-custom" data-domain="${info.domain}">重置为非自定义</button>` : ''}
+            <button class="btn-edit" onclick="editDomain('${info.domain}', this)">编辑</button>
+            <button class="btn-delete" onclick="deleteDomain('${info.domain}')">删除</button>
+            <button class="btn-update" data-action="update-whois" data-domain="${info.domain}">更新WHOIS</button>
+            <button class="btn-query" data-action="query-whois" data-domain="${info.domain}">查询WHOIS</button>
+            <button class="btn-view" data-action="view-props" data-domain="${info.domain}">查看属性</button>
+            ${info.isCustom ? `<button class="btn-reset" data-action="reset-custom" data-domain="${info.domain}">重置为非自定义</button>` : ''}
           `;
         } else {
           operationButtons = `
-            <button onclick="editDomain('${info.domain}', this)">编辑</button>
-            <button onclick="deleteDomain('${info.domain}')">删除</button>
-            <button data-action="view-props" data-domain="${info.domain}">查看属性</button>
-            ${info.isCustom ? `<button data-action="reset-custom" data-domain="${info.domain}">重置为非自定义</button>` : ''}
+            <button class="btn-edit" onclick="editDomain('${info.domain}', this)">编辑</button>
+            <button class="btn-delete" onclick="deleteDomain('${info.domain}')">删除</button>
+            <button class="btn-view" data-action="view-props" data-domain="${info.domain}">查看属性</button>
+            ${info.isCustom ? `<button class="btn-reset" data-action="reset-custom" data-domain="${info.domain}">重置为非自定义</button>` : ''}
           `;
         }
       }
@@ -783,7 +783,7 @@ function generateHTML(domains, isAdmin) {
     
   const adminTools = isAdmin ? `
     <div style="margin: 20px 0;">
-      <button id="syncCloudflareBtn" class="btn btn-primary">同步Cloudflare域名</button>
+      <button id="syncCloudflareBtn" class="btn-update" class="btn btn-primary">同步Cloudflare域名</button>
       <span id="syncStatus" style="margin-left: 10px;"></span>
     </div>
   ` : '';
@@ -796,160 +796,219 @@ function generateHTML(domains, isAdmin) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${CUSTOM_TITLE}${isAdmin ? ' - 后台管理' : ''}</title>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      line-height: 1.6;
-      margin: 0;
-      padding: 20px;
-      background-color: #f4f4f4;
-    }
-    .container {
-      margin: 0 auto;
-      padding: 0 15px;
-    }
-
-    .container {
-    padding-bottom: 60px; /* 根据页脚高度调整 */
-    }
-
-    footer {
-      position: relative;
-      left: 0;
-      bottom: 0;
-      width: 100%;
-    }
-
-    .table-wrapper {
-      width: 100%;
-      overflow-x: auto;
-    }
-  
-    h2.table-title {
-      font-size: 1.5em;
-      margin-top: 30px;
-      margin-bottom: 15px;
-      padding-bottom: 10px;
-      border-bottom: 2px solid #ddd;
-    }
-  
-    .table-separator {
-      height: 2px;
-      background-color: #eee;
-      margin: 30px 0;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-bottom: 20px;
-      table-layout: auto;
-    }
-    th, td {
-      padding: 8px;
-      text-align: left;
-      border-bottom: 1px solid #ddd;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    th {
-      background-color: #f2f2f2;
-      font-weight: bold;
-    }
-    .status-column { width: 30px; min-width: 30px; max-width: 50px; }
-    .domain-column { min-width: 120px; max-width: 25%; }
-    .system-column, .registrar-column { min-width: 80px; max-width: 15%; }
-    .date-column { min-width: 90px; max-width: 12%; }
-    .days-column { min-width: 60px; max-width: 10%; }
-    .progress-column { min-width: 100px; max-width: 20%; }
-    .operation-column { min-width: 120px; max-width: 20%; }
-    .status-dot {
-      display: inline-block;
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-    }
-    .progress-bar {
-      width: 100%;
-      background-color: #e0e0e0;
-      border-radius: 5px;
-      overflow: hidden;
-    }
-    .progress {
-      height: 20px;
-      background-color: #4CAF50;
-      transition: width 0.5s ease-in-out;
-    }
-    button {
-      padding: 5px 10px;
-      margin: 2px;
-      cursor: pointer;
-    }
-    .section-header {
-      background-color: #e9ecef;
-      font-weight: bold;
-    }
-    .section-header td {
-      padding: 10px;
-    }
-    @media (max-width: 768px) {
+      body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        line-height: 1.6;
+        margin: 0;
+        padding: 0;
+        background-color: #f8f9fa;
+        color: #333;
+      }
+      h1 {
+        text-align: center;
+        margin: 20px 0;
+        padding: 10px;
+      }
+      .container {
+        max-width: 1600px;
+        margin: 20px auto;
+        padding: 20px;
+        background-color: #fff;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        border-radius: 8px;
+      }
+      .admin-link {
+        margin: 15px 0;
+        padding: 10px;
+        background-color: #e9ecef;
+        border-radius: 5px;
+      }
+      .admin-link a {
+        color: #007bff;
+        text-decoration: none;
+        transition: color 0.3s;
+      }
+      .admin-link a:hover {
+        color: #0056b3;
+      }
+      .table-wrapper {
+        overflow-x: auto;
+        margin: 20px 0;
+        border-radius: 8px;
+        box-shadow: 0 0 20px rgba(0, 0, 0, 0.05);
+      }
       table {
-        font-size: 12px;
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0;
+        background: #fff;
       }
       th, td {
-        padding: 6px;
+        padding: 12px 15px;
+        text-align: left;
+        border-bottom: 1px solid #e9ecef;
       }
-      .system-column, .registrar-column {
-        display: none;
+      th {
+        background-color: #f8f9fa;
+        font-weight: 600;
+        color: #495057;
+        white-space: nowrap;
       }
-      .operation-column {
-        width: auto;
+      tr:hover {
+        background-color: #f8f9fa;
+        transition: background-color 0.3s;
+      }
+      .section-header {
+        background-color: #e9ecef;
+        font-weight: 600;
+      }
+      .section-header td {
+        padding: 15px;
+        color: #495057;
       }
       button {
-        padding: 3px 6px;
-        font-size: 12px;
+        padding: 6px 12px;  // 调整按钮内边距
+        margin: 2px;
+        border: none;
+        border-radius: 4px;
+        color: white;
+        cursor: pointer;
+        transition: all 0.3s;
+        font-size: 13px;    // 调整按钮字体大小
+        min-width: 80px;    // 设置最小宽度
       }
-      .less-important-column {
+      /* 添加不同按钮的颜色样式 */
+      .btn-edit {
+        background-color: #4dabf7;
+      }
+      .btn-edit:hover {
+        background-color: #339af0;
+      }
+      .btn-delete {
+        background-color: #ff6b6b;
+      }
+      .btn-delete:hover {
+        background-color: #fa5252;
+      }
+      .btn-update {
+        background-color: #38d9a9;
+      }
+      .btn-update:hover {
+        background-color: #20c997;
+      }
+      .btn-query {
+        background-color: #845ef7;
+      }
+      .btn-query:hover {
+        background-color: #7950f2;
+      }
+      .btn-view {
+        background-color: #69db7c;
+      }
+      .btn-view:hover {
+        background-color: #51cf66;
+      }
+      .btn-reset {
+        background-color: #ffa94d;
+      }
+      .btn-reset:hover {
+        background-color: #ff922b;
+      }
+      .progress-column { 
+        min-width: 200px;   // 增加进度条列的最小宽度
+        width: 25%;         // 设置相对宽度
+      }
+      .progress-bar {
+        height: 20px;
+        background-color: #e9ecef;
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2);
+        width: 100%;        // 确保进度条填满容器
+      }
+      .progress {
+        height: 100%;
+        background: linear-gradient(45deg, #74c0fc, #a5d8ff); // 柔和的蓝色渐变
+        box-shadow: 0 0 10px rgba(116, 192, 252, 0.3);
+        transition: width 0.5s ease-in-out;
+      }
+      .domain-modal {
         display: none;
+        position: fixed;
+        z-index: 1000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.5);
+        opacity: 0;
+        transition: opacity 0.3s;
       }
-    }
-    
-    .domain-modal {
-      display: none;
-      position: fixed;
-      z-index: 1000;
-      left: 0;
-      top: 0;
-      width: 100%;
-      height: 100%;
-      background-color: rgba(0,0,0,0.4);
-    }
-    
-    .domain-modal-content {
-      background-color: #fefefe;
-      margin: 10% auto;
-      padding: 20px;
-      border: 1px solid #888;
-      width: 80%;
-      max-width: 600px;
-      border-radius: 5px;
-    }
-    
-    .domain-modal-close {
-      color: #aaa;
-      float: right;
-      font-size: 28px;
-      font-weight: bold;
-      cursor: pointer;
-    }
-    
-    .domain-property {
-      margin-bottom: 10px;
-    }
-    
-    .domain-property-label {
-      font-weight: bold;
-    }
-  </style>
+      .domain-modal.show {
+        opacity: 1;
+      }
+      .domain-modal-content {
+        background-color: #fff;
+        margin: 10% auto;
+        padding: 25px;
+        border-radius: 8px;
+        width: 90%;
+        max-width: 600px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+        transform: translateY(-20px);
+        transition: transform 0.3s;
+      }
+      .domain-modal.show .domain-modal-content {
+        transform: translateY(0);
+      }
+      .status-dot {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        transition: transform 0.3s;
+      }
+      .status-dot:hover {
+        transform: scale(1.2);
+      }
+      #addCustomDomainForm {
+        background-color: #f8f9fa;
+        padding: 20px;
+        border-radius: 8px;
+        margin-top: 20px;
+      }
+      #addCustomDomainForm input {
+        padding: 8px 12px;
+        margin: 5px;
+        border: 1px solid #ced4da;
+        border-radius: 4px;
+        transition: border-color 0.3s;
+      }
+      #addCustomDomainForm input:focus {
+        border-color: #007bff;
+        outline: none;
+        box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+      }
+      #syncCloudflareBtn {
+        background-color: #28a745;
+      }
+      #syncCloudflareBtn:hover {
+        background-color: #218838;
+      }
+      @media (max-width: 768px) {
+        .container {
+          padding: 10px;
+          margin: 10px;
+        }
+        th, td {
+          padding: 8px;
+        }
+        button {
+          padding: 6px 12px;
+          font-size: 14px;
+        }
+      }
+    </style>
   </head>
   <body>
     <div class="container">
@@ -992,7 +1051,7 @@ function generateHTML(domains, isAdmin) {
             <input type="text" id="newRegistrar" placeholder="注册商" required>
             <input type="date" id="newRegistrationDate" required>
             <input type="date" id="newExpirationDate" required>
-            <button type="submit">添加</button>
+            <button class="btn-edit" type="submit">添加</button>
           </form>
         </div>
       ` : ''}
