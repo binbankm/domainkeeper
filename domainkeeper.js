@@ -2,13 +2,13 @@
 const VERSION = "1.7.0";
 
 // 自定义标题
-const CUSTOM_TITLE = "域名管理";
+const CUSTOM_TITLE = "培根的玉米大全";
 
 // 在这里设置你的 Cloudflare API Token
-const CF_API_KEY = "A0yVNlSDEPe4vjt6FbfKPAAaTd11sO_ZIxdEuZqH";
+const CF_API_KEY = "";
 
 // 自建 WHOIS 代理服务地址
-const WHOIS_PROXY_URL = "https://whois.lbyan.us.kg";
+const WHOIS_PROXY_URL = "https://whois.0o11.com";
 
 // 访问密码（可为空）
 const ACCESS_PASSWORD = "";
